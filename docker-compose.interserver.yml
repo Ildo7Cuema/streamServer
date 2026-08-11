@@ -10,7 +10,6 @@
 #   80   → dashboard + /api + /stream (Nginx)
 #   8000 → Icecast (BUTT transmite aqui)
 # =============================================================================
-version: "3.9"
 
 services:
   postgres:
@@ -48,19 +47,21 @@ services:
       - streamserver
 
   icecast:
+    # infiniteproject/icecast (Alpine): config em /etc/icecast.xml, logs em /var/log/icecast
     image: infiniteproject/icecast:latest
     container_name: streamserver-icecast
     restart: unless-stopped
     volumes:
-      - ./infrastructure/icecast/icecast.interserver.xml:/etc/icecast2/icecast.xml:ro
-      - icecast_logs:/var/log/icecast2
+      - ./infrastructure/icecast/icecast.interserver.xml:/etc/icecast.xml:ro
+      - icecast_logs:/var/log/icecast
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/status-json.xsl"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/status-json.xsl || exit 1"]
       interval: 15s
       timeout: 5s
-      retries: 5
+      retries: 8
+      start_period: 20s
     networks:
       - streamserver
 
