@@ -43,15 +43,38 @@ function tryVerifySupabaseAccessToken(token) {
   }
 }
 
+function isAccountBlocked(profile) {
+  if (!profile) return true;
+  if (profile.is_active === false) return true;
+  // account_status may be undefined if SaaS migration not applied yet
+  return profile.account_status === 'blocked';
+}
+
 // Authentication middleware — loads full user profile
 async function loadUserProfile(userId) {
-  const result = await query(
-    `SELECT id, username, email, display_name, role, is_active,
-            account_status, blocked_at, blocked_reason, avatar_url
-     FROM users WHERE id = $1`,
-    [userId]
-  );
-  return result.rows[0] || null;
+  try {
+    const result = await query(
+      `SELECT id, username, email, display_name, role, is_active,
+              account_status, blocked_at, blocked_reason, avatar_url
+       FROM users WHERE id = $1`,
+      [userId]
+    );
+    return result.rows[0] || null;
+  } catch (error) {
+    // Fresh Docker installs may lack SaaS columns until migrations run
+    if (error.code === '42703') {
+      logger.warn('loadUserProfile: missing column — falling back to base user fields');
+      const result = await query(
+        `SELECT id, username, email, display_name, role, is_active, avatar_url
+         FROM users WHERE id = $1`,
+        [userId]
+      );
+      const row = result.rows[0];
+      if (!row) return null;
+      return { ...row, account_status: 'active', blocked_at: null, blocked_reason: null };
+    }
+    throw error;
+  }
 }
 
 async function authenticate(req, res, next) {
@@ -72,7 +95,7 @@ async function authenticate(req, res, next) {
       );
       if (result.rows.length > 0) {
         const profile = await loadUserProfile(result.rows[0].id);
-        if (!profile || !profile.is_active || profile.account_status === 'blocked') {
+        if (!profile || isAccountBlocked(profile)) {
           return res.status(403).json({
             error: 'Conta bloqueada ou inactiva.',
             code: 'ACCOUNT_BLOCKED'
@@ -83,27 +106,29 @@ async function authenticate(req, res, next) {
       }
     }
 
+    let decoded;
     try {
-      const decoded = verifyToken(token);
-      const profile = await loadUserProfile(decoded.id);
-      if (!profile) {
-        return res.status(401).json({ error: 'User not found' });
-      }
-      if (!profile.is_active || profile.account_status === 'blocked') {
-        return res.status(403).json({
-          error: 'Conta bloqueada ou inactiva.',
-          code: 'ACCOUNT_BLOCKED',
-          reason: profile.blocked_reason
-        });
-      }
-      req.user = profile;
-      return next();
+      decoded = verifyToken(token);
     } catch (error) {
       if (error.name === 'TokenExpiredError') {
         return res.status(401).json({ error: 'Token expired' });
       }
       return res.status(401).json({ error: 'Invalid token' });
     }
+
+    const profile = await loadUserProfile(decoded.id);
+    if (!profile) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    if (isAccountBlocked(profile)) {
+      return res.status(403).json({
+        error: 'Conta bloqueada ou inactiva.',
+        code: 'ACCOUNT_BLOCKED',
+        reason: profile.blocked_reason
+      });
+    }
+    req.user = profile;
+    return next();
   } catch (error) {
     logger.error('authenticate middleware error:', error);
     return res.status(500).json({ error: 'Authentication failed' });

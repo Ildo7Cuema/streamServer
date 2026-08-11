@@ -9,9 +9,22 @@ const path = require('path');
 const { query, pool } = require('./connection');
 const logger = require('../utils/logger');
 
+function resolveMigrationsDir() {
+  const candidates = [
+    // Docker image: COPY infrastructure/postgres/migrations → /app/migrations
+    path.join(__dirname, '../../migrations'),
+    // Local/dev: repo root infrastructure/postgres/migrations
+    path.join(__dirname, '../../../infrastructure/postgres/migrations')
+  ];
+  return candidates.find((dir) => fs.existsSync(dir)) || null;
+}
+
 async function runMigrations() {
-  const migrationsDir = path.join(__dirname, '../../../infrastructure/postgres/migrations');
-  if (!fs.existsSync(migrationsDir)) return;
+  const migrationsDir = resolveMigrationsDir();
+  if (!migrationsDir) {
+    logger.warn('No migrations directory found — skipping');
+    return;
+  }
 
   await query(`
     CREATE TABLE IF NOT EXISTS schema_migrations (

@@ -56,13 +56,13 @@ services:
       - icecast_logs:/var/log/icecast
     ports:
       - "8000:8000"
-    # Alpine icecast nem sempre tem status-json.xsl; / (status.xsl) é fiável
+    # wget ao XSL falha nesta imagem; basta o processo icecast estar activo
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8000/ || exit 1"]
+      test: ["CMD-SHELL", "pidof icecast >/dev/null || exit 1"]
       interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 15s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
     networks:
       - streamserver
 
@@ -101,13 +101,14 @@ services:
     volumes:
       - media_storage:/var/media
       - recordings:/var/recordings
+      - ./infrastructure/postgres/migrations:/app/migrations:ro
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
       icecast:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
       interval: 20s

@@ -11,7 +11,7 @@ RUN npm ci --only=production
 COPY src/ ./src/
 
 # Create media directories
-RUN mkdir -p /var/media/music /var/media/jingles /var/media/ads /var/recordings
+RUN mkdir -p /var/media/music /var/media/jingles /var/media/ads /var/recordings /app/migrations
 
 EXPOSE 3000
 

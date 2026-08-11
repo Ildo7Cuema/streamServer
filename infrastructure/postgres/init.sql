@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
     role VARCHAR(20) NOT NULL DEFAULT 'dj' CHECK (role IN ('admin', 'manager', 'dj', 'viewer')),
     avatar_url TEXT,
     is_active BOOLEAN DEFAULT true,
+    account_status VARCHAR(20) DEFAULT 'active' CHECK (account_status IN ('active', 'blocked', 'pending')),
+    blocked_at TIMESTAMPTZ,
+    blocked_reason TEXT,
     last_login TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -243,6 +246,9 @@ CREATE INDEX IF NOT EXISTS idx_metadata_history_station_played ON metadata_histo
 ALTER TABLE dj_profiles ADD COLUMN IF NOT EXISTS last_connected TIMESTAMPTZ;
 ALTER TABLE dj_profiles ADD COLUMN IF NOT EXISTS last_ip INET;
 ALTER TABLE stations ADD COLUMN IF NOT EXISTS source_password VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status VARCHAR(20) DEFAULT 'active';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS blocked_reason TEXT;
 
 -- Supabase Auth integration (optional FK added in infrastructure/supabase/supabase_auth.sql)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_user_id UUID UNIQUE;

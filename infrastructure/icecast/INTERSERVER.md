@@ -147,16 +147,18 @@ A primeira build pode demorar vários minutos.
 
 ---
 
-## PASSO 6 — Criar dados iniciais (admin / planos)
+## PASSO 6 — Migrações + dados iniciais (admin / planos)
 
 Na VPS:
 
 ```bash
 cd /opt/StreamServer
+docker compose -f docker-compose.interserver.yml exec backend npm run migrate
 docker compose -f docker-compose.interserver.yml exec backend npm run seed
 ```
 
-Isto cria/actualiza o utilizador admin e dados base.  
+Isto aplica colunas SaaS (`account_status`, planos, etc.) e cria/actualiza o utilizador admin.  
+Sem o `migrate`, o login pode gravar o token e voltar logo ao ecrã de login.  
 Confirma no output do seed o utilizador de administração.
 
 ---

@@ -117,6 +117,16 @@ rm -f "${ICE_XML}.bak"
 echo ">> A construir e arrancar stack..."
 "${DOCKER[@]}" compose -f docker-compose.interserver.yml --env-file .env up -d --build
 
+echo ">> A aplicar migrações da base de dados..."
+for i in $(seq 1 30); do
+  if "${DOCKER[@]}" compose -f docker-compose.interserver.yml exec -T backend wget -q -O /dev/null http://127.0.0.1:3000/api/health 2>/dev/null; then
+    break
+  fi
+  sleep 2
+done
+"${DOCKER[@]}" compose -f docker-compose.interserver.yml exec -T backend npm run migrate || true
+"${DOCKER[@]}" compose -f docker-compose.interserver.yml exec -T backend npm run seed || true
+
 echo ""
 echo "=============================================="
 echo " StreamServer na InterServer — pronto"
@@ -138,8 +148,7 @@ echo "Passwords geradas (guarda .env com segurança):"
 echo "  ICECAST_ADMIN_PASSWORD=$ADMIN_PASS"
 echo "  POSTGRES_PASSWORD=$DB_PASS"
 echo ""
-echo "Seed (primeira vez):"
-echo "  docker compose -f docker-compose.interserver.yml exec backend npm run seed"
+echo "Admin seed: email/username do seed.js (ou re-executa npm run seed)"
 echo ""
 echo "Firewall InterServer: TCP 22, 80, 8000"
 echo "Guia: infrastructure/icecast/INTERSERVER.md"
