@@ -161,8 +161,9 @@ function getIcecastSetupStatus() {
       port,
       reason: 'missing_public_icecast_host',
       message:
-        'Define PUBLIC_ICECAST_HOST no Render com o IP ou domínio da VM onde corre o Icecast (porta 8000). ' +
-        'A Vercel serve só a escuta online — o BUTT liga directamente ao Icecast na VM.'
+        'Define PUBLIC_ICECAST_HOST no Render com o IP ou domínio da VPS Icecast (ex.: InterServer, porta 8000). ' +
+        'A Vercel serve só a escuta online — o BUTT liga directamente ao Icecast na VPS. ' +
+        'Ver infrastructure/icecast/INTERSERVER.md'
     };
   }
 

@@ -113,7 +113,7 @@ export function renderStations(container) {
             <strong style="color:var(--warning,#f59e0b);">⚠️ Icecast ainda não configurado</strong>
             <p id="creds-setup-message" style="margin:8px 0 0;color:var(--text-muted);"></p>
             <p style="margin:8px 0 0;color:var(--text-muted);font-size:0.8rem;">
-              O BUTT precisa de um servidor Icecast numa VM (porta 8000). A Vercel serve apenas a URL de escuta online.
+              O BUTT precisa de Icecast numa VPS (ex.: InterServer, porta 8000). A Vercel serve apenas a URL de escuta online.
               Consulta <code>infrastructure/icecast/README.md</code> no repositório.
             </p>
           </div>

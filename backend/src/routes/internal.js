@@ -11,7 +11,6 @@ const logger = require('../utils/logger');
 
 function verifyInternal(req, res, next) {
   const apiKey = process.env.INTERNAL_API_KEY;
-  // Icecast auth callback não envia X-Internal-Key — nunca bloquear em produção
   if (!apiKey) {
     return next();
   }
@@ -19,6 +18,11 @@ function verifyInternal(req, res, next) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   next();
+}
+
+/** Icecast URL-auth não envia X-Internal-Key — nunca bloquear este callback. */
+function allowIcecastAuth(req, res, next) {
+  return next();
 }
 
 function normalizeMount(mount) {
@@ -54,7 +58,7 @@ async function handleIcecastAuth(req, res) {
 
     // Station-level password
     const stationResult = await query(
-      'SELECT id, name, source_password FROM stations WHERE mountpoint = $1 AND is_active = true',
+      'SELECT id, name, source_password, owner_id FROM stations WHERE mountpoint = $1 AND is_active = true',
       [normalizedMount]
     );
 
@@ -137,8 +141,9 @@ async function handleIcecastAuth(req, res) {
 }
 
 // Icecast auth (GET and POST — Icecast uses GET with query params)
-router.get('/icecast/auth', verifyInternal, handleIcecastAuth);
-router.post('/icecast/auth', verifyInternal, handleIcecastAuth);
+// Sem verifyInternal: o Icecast não consegue enviar INTERNAL_API_KEY.
+router.get('/icecast/auth', allowIcecastAuth, handleIcecastAuth);
+router.post('/icecast/auth', allowIcecastAuth, handleIcecastAuth);
 
 // POST /api/internal/metadata - Metadata update from Liquidsoap
 router.post('/metadata', verifyInternal, async (req, res) => {

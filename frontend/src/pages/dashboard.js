@@ -163,7 +163,7 @@ async function loadStreamCredentials() {
     const setupBanner = !configured
       ? `<div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.85rem;">
           <strong style="color:#f59e0b;">⚠️ Servidor Icecast em falta</strong>
-          <p style="margin:8px 0 0;color:var(--text-muted);">${escapeHtml(setup.message || 'Define PUBLIC_ICECAST_HOST no Render com o host da VM (porta 8000).')}</p>
+          <p style="margin:8px 0 0;color:var(--text-muted);">${escapeHtml(setup.message || 'Define PUBLIC_ICECAST_HOST no Render com o IP da VPS InterServer (porta 8000).')}</p>
         </div>`
       : '';
 

@@ -9,15 +9,15 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://streamserver-ivu7.onrender.com/api/$1"
+      "destination": "http://SEU_IP_INTERSERVER/api/$1"
     },
     {
       "source": "/ws",
-      "destination": "https://streamserver-ivu7.onrender.com/ws"
+      "destination": "http://SEU_IP_INTERSERVER/ws"
     },
     {
       "source": "/stream/(.*)",
-      "destination": "https://streamserver-ivu7.onrender.com/stream/$1"
+      "destination": "http://SEU_IP_INTERSERVER/stream/$1"
     },
     {
       "source": "/((?!assets/).*)",

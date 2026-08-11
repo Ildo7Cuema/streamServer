@@ -11,6 +11,16 @@ const ICECAST_ADMIN_PASSWORD = process.env.ICECAST_ADMIN_PASSWORD || 'adminpass'
 
 const adminAuth = Buffer.from(`${ICECAST_ADMIN_USER}:${ICECAST_ADMIN_PASSWORD}`).toString('base64');
 
+let lastIcecastErrorLog = 0;
+const ICECAST_ERROR_LOG_INTERVAL_MS = 60_000;
+
+function logIcecastError(message, detail) {
+  const now = Date.now();
+  if (now - lastIcecastErrorLog < ICECAST_ERROR_LOG_INTERVAL_MS) return;
+  lastIcecastErrorLog = now;
+  logger.warn(`${message}${detail ? `: ${detail}` : ''} (próximo aviso em ~60s; sobe Icecast ou define ICECAST_DISABLED=true)`);
+}
+
 async function icecastRequest(endpoint) {
   try {
     const url = `http://${ICECAST_HOST}:${ICECAST_PORT}${endpoint}`;
@@ -31,7 +41,7 @@ async function icecastRequest(endpoint) {
     }
     return await response.text();
   } catch (error) {
-    logger.error(`Icecast request failed [${endpoint}]:`, error.message);
+    logIcecastError(`Icecast request failed [${endpoint}]`, error.message);
     throw error;
   }
 }
@@ -43,7 +53,7 @@ async function getServerStats() {
     const parsed = typeof data === 'string' ? JSON.parse(data) : data;
     return parsed.icestats || {};
   } catch (error) {
-    logger.error('Failed to get Icecast stats:', error.message);
+    logIcecastError('Failed to get Icecast stats', error.message);
     return null;
   }
 }

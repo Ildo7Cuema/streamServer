@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
               if (res && !res.headersSent && typeof res.writeHead === 'function') {
                 res.writeHead(503, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
-                  error: 'Backend indisponível. Inicia o servidor API (npm run dev:backend).',
+                  error: 'Backend indisponível. Na raiz do projeto corre: npm run dev (API + frontend juntos).',
                   details: err.message
                 }));
               }

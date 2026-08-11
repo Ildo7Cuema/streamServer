@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js",
+    "dev": "node ./node_modules/nodemon/bin/nodemon.js src/index.js",
     "migrate": "node src/database/migrate.js",
     "db:ping": "node src/database/ping.js",
     "seed": "node src/database/seed.js",

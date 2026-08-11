@@ -81,7 +81,7 @@ function updateNavVisibility() {
 // =============================================================================
 // API Helper
 // =============================================================================
-/** Produção: VITE_BACKEND_URL (Render). Dev: proxy Vite em /api */
+/** Produção: VITE_BACKEND_URL (InterServer/VPS). Mesmo origem Nginx → omitir. Dev: proxy Vite /api */
 function resolveBackendOrigin() {
   const raw = import.meta.env.VITE_BACKEND_URL?.trim();
   if (!raw) return null;
@@ -292,7 +292,7 @@ export async function api(path, options = {}) {
       (data && (data.error || data.message || data.details)) ||
       (raw && raw.trim()) ||
       (res.status === 500 && !raw.trim()
-        ? 'Servidor indisponível. Confirma que o backend está a correr (npm run dev:backend).'
+        ? 'Servidor indisponível. Na raiz do projeto corre: npm run dev (sobe API + frontend).'
         : `Request failed (${res.status})`);
     const err = new Error(translateMessage(rawMsg));
     err.status = res.status;

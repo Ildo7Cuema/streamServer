@@ -1,22 +1,45 @@
-# Icecast público — StreamServer
+# Icecast / VPS — StreamServer
 
-Guia para alojar o Icecast numa VM/VPS e ligá-lo ao backend (Render) e ao frontend (Vercel).
+## Arquitectura recomendada (InterServer)
 
-## Porquê uma VM (e não o Render)
-O Icecast precisa de estar **sempre ligado** e de aceitar ligações de **fonte (BUTT)** numa **porta TCP** (8000). Um web service do Render só expõe uma porta HTTPS e, no plano free, adormece — inadequado para rádio 24/7.
+Backend + Icecast + Dashboard na **mesma VPS**:
 
-## Arquitetura
 ```
-BUTT (DJ) --TCP 8000--> Icecast (VM) --valida password--> Backend (Render) --> Postgres
-Ouvinte (browser) --HTTPS--> Vercel --rewrite /stream--> Backend (Render) --HTTP 8000--> Icecast
+BUTT --TCP 8000--> Icecast --auth--> Backend (Docker)
+Browser --:80--> Nginx --> Dashboard + /api + /stream
 ```
-- O BUTT liga **diretamente** ao Icecast (host:8000, HTTP).
-- O ouvinte chega via proxy `/stream` do backend (HTTPS), por isso o Icecast pode ficar em HTTP simples.
-- A autenticação de fontes é feita por *callback* do Icecast ao backend (`/api/internal/icecast/auth`), validando a `source_password` de cada estação na base de dados.
+
+Guia: **[INTERSERVER.md](./INTERSERVER.md)** · script: `scripts/interserver-bootstrap.sh`
+
+## Alternativa (Icecast só na VM, API no Render)
+
+```
+BUTT --TCP 8000--> Icecast (VM) --auth--> Backend (Render)
+Ouvinte --HTTPS--> Vercel --/stream--> Render --> Icecast
+```
+O Icecast precisa de estar **sempre ligado** na porta TCP 8000.
 
 ## Ficheiros
+- `INTERSERVER.md` — **guia passo a passo** para VPS InterServer (BUTT + Icecast).
+- `DIGITALOCEAN.md` — guia Droplet DigitalOcean (~$6/mês).
+- `ORACLE-CLOUD-FREE.md` — guia VM Always Free na Oracle Cloud ($0/mês).
 - `icecast.prod.xml` — configuração de produção (mounts dinâmicos por estação + auth por URL para o backend público).
 - `docker-compose.vm.yml` — sobe só o Icecast na VM (AutoDJ/Liquidsoap opcional, comentado).
+
+## Começar aqui
+
+| Provider | Guia | Notas |
+|----------|------|--------|
+| **InterServer (full stack)** | **[INTERSERVER.md](./INTERSERVER.md)** | Backend+Icecast+Frontend na VPS |
+| DigitalOcean (só Icecast) | [DIGITALOCEAN.md](./DIGITALOCEAN.md) | API no Render |
+| Oracle Cloud Free (só Icecast) | [ORACLE-CLOUD-FREE.md](./ORACLE-CLOUD-FREE.md) | API no Render |
+
+Na VM, depois de copiar o repo ou `infrastructure/icecast`:
+
+```bash
+chmod +x scripts/vm-icecast-bootstrap.sh
+./scripts/vm-icecast-bootstrap.sh
+```
 
 ## Passos
 
@@ -27,7 +50,7 @@ Ouvinte (browser) --HTTPS--> Vercel --rewrite /stream--> Backend (Render) --HTTP
    ```
    Gera passwords, arranca o container e imprime as variáveis para colar no Render.
 
-1. **Criar VM** (ex.: Oracle Cloud Always Free, Hetzner, Contabo, DigitalOcean). Instalar Docker. Abrir firewall TCP **22** e **8000**.
+1. **Criar VM** (ex.: InterServer, Oracle Cloud Always Free, Hetzner, Contabo, DigitalOcean). Instalar Docker. Abrir firewall TCP **22** e **8000**.
 
 2. **Copiar** `icecast.prod.xml` e `docker-compose.vm.yml` para a VM.
 
@@ -65,6 +88,7 @@ Ouvinte (browser) --HTTPS--> Vercel --rewrite /stream--> Backend (Render) --HTTP
    Depois **Redeploy** (corrige o 502 e as rewrites `/api`, `/ws`, `/stream`).
 
 ## Validação
+- Do PC: `./scripts/verify-icecast-butt.sh SEU_HOST_PUBLICO`
 - `https://streamserver-ivu7.onrender.com/api/health` → `icecast: "ok"`.
 - Modal da estação → `Servidor: SEU_HOST_PUBLICO`, `Porta: 8000`.
 - BUTT liga com `source` + a `source_password` da estação → fonte conecta.

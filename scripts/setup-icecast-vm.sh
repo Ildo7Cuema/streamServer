@@ -32,7 +32,8 @@ ADMIN_PASS="${ICECAST_ADMIN_PASSWORD:-$(gen_secret)}"
 WORKDIR="${ICECAST_VM_DIR:-$HOME/streamserver-icecast}"
 mkdir -p "$WORKDIR"
 
-cp "$ICECAST_DIR/icecast.prod.xml" "$WORKDIR/icecast.xml"
+# O compose monta ./icecast.prod.xml — manter este nome (bug antigo: gerava só icecast.xml).
+cp "$ICECAST_DIR/icecast.prod.xml" "$WORKDIR/icecast.prod.xml"
 cp "$ICECAST_DIR/docker-compose.vm.yml" "$WORKDIR/docker-compose.yml"
 
 sed -i.bak \
@@ -41,11 +42,23 @@ sed -i.bak \
   -e "s/CHANGE_ME_SOURCE/$SOURCE_PASS/g" \
   -e "s/CHANGE_ME_RELAY/$RELAY_PASS/g" \
   -e "s/CHANGE_ME_ADMIN/$ADMIN_PASS/g" \
-  "$WORKDIR/icecast.xml"
-rm -f "$WORKDIR/icecast.xml.bak"
+  "$WORKDIR/icecast.prod.xml"
+rm -f "$WORKDIR/icecast.prod.xml.bak"
+
+# Compat: symlink para quem espera icecast.xml no workdir
+ln -sfn icecast.prod.xml "$WORKDIR/icecast.xml"
 
 cd "$WORKDIR"
-docker compose up -d
+COMPOSE=(docker compose)
+if ! docker info >/dev/null 2>&1; then
+  if sudo docker info >/dev/null 2>&1; then
+    COMPOSE=(sudo docker compose)
+  else
+    echo "Docker não está acessível. Tenta: sudo $0 $PUBLIC_HOST $BACKEND_URL"
+    exit 1
+  fi
+fi
+"${COMPOSE[@]}" up -d --force-recreate
 
 echo ""
 echo "=============================================="
@@ -63,10 +76,12 @@ echo "  ICECAST_PORT=8000"
 echo "  ICECAST_ADMIN_USER=admin"
 echo "  ICECAST_ADMIN_PASSWORD=$ADMIN_PASS"
 echo ""
-echo "Firewall da VM: abre TCP 8000"
+echo "Firewall da VM / InterServer: abre TCP 8000 (e 22 para SSH)"
+echo "Guia: infrastructure/icecast/INTERSERVER.md"
 echo ""
 echo "Passwords Icecast (guarda num sítio seguro):"
 echo "  source-password: $SOURCE_PASS  (só se usares Liquidsoap/AutoDJ)"
 echo "  admin-password:  $ADMIN_PASS"
 echo ""
 echo "O BUTT usa a source_password de cada estação (dashboard), não a source-password global do Icecast."
+echo "Config BUTT: Servidor=$PUBLIC_HOST  Porta=8000  User=source  SSL=Off  Mount=/{slug}/live"

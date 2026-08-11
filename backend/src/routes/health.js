@@ -55,6 +55,7 @@ router.get('/', async (req, res) => {
   }
 
   const icecastSetup = getIcecastSetupStatus();
+  const internalKeySet = Boolean(process.env.INTERNAL_API_KEY);
 
   // Diagnóstico de URLs públicas (sem segredos) — útil para validar APP_URL no Render
   checks.streamConfig = {
@@ -68,6 +69,11 @@ router.get('/', async (req, res) => {
     icecastConfigured: icecastSetup.configured,
     icecastSetupReason: icecastSetup.reason,
     icecastSetupMessage: icecastSetup.message,
+    // Auth Icecast já não exige INTERNAL_API_KEY; aviso só para outros endpoints internos
+    internalApiKeySet: internalKeySet,
+    buttHint: icecastSetup.configured
+      ? `BUTT → Servidor=${icecastSetup.connectHost} Porta=${icecastSetup.port} User=source SSL=Off`
+      : icecastSetup.message,
     gitCommit: process.env.RENDER_GIT_COMMIT?.slice(0, 7) || null
   };
 

@@ -2,6 +2,11 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# Vazio = mesmo origem (Nginx na VPS proxy /api).
+# Na Vercel: define VITE_BACKEND_URL=http(s)://IP_OU_DOMÍNIO_INTERSERVER
+ARG VITE_BACKEND_URL=
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
+
 COPY package*.json ./
 RUN npm ci
 

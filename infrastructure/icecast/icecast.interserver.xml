@@ -1,0 +1,88 @@
+<!--
+  Icecast — InterServer (mesmo VPS que o backend)
+  Auth: http://backend:3000 (rede Docker interna)
+  BUTT liga ao IP/DNS público na porta 8000 (HTTP, SSL off)
+-->
+<icecast>
+    <limits>
+        <clients>1000</clients>
+        <sources>10</sources>
+        <queue-size>524288</queue-size>
+        <client-timeout>30</client-timeout>
+        <header-timeout>15</header-timeout>
+        <source-timeout>10</source-timeout>
+        <burst-on-connect>1</burst-on-connect>
+        <burst-size>65535</burst-size>
+    </limits>
+
+    <authentication>
+        <source-password>CHANGE_ME_SOURCE</source-password>
+        <relay-password>CHANGE_ME_RELAY</relay-password>
+        <admin-user>admin</admin-user>
+        <admin-password>CHANGE_ME_ADMIN</admin-password>
+    </authentication>
+
+    <hostname>CHANGE_ME_PUBLIC_HOST</hostname>
+    <location>StreamServer Radio</location>
+    <admin>admin@radio.example.com</admin>
+
+    <fileserve>1</fileserve>
+    <paths>
+        <basedir>/usr/share/icecast2</basedir>
+        <logdir>/var/log/icecast2</logdir>
+        <webroot>/usr/share/icecast2/web</webroot>
+        <adminroot>/usr/share/icecast2/admin</adminroot>
+        <alias source="/" destination="/status.xsl"/>
+    </paths>
+
+    <http-headers>
+        <header name="Access-Control-Allow-Origin" value="*" />
+        <header name="Access-Control-Allow-Headers" value="Origin, Accept, X-Requested-With, Content-Type, Icy-MetaData" />
+        <header name="Access-Control-Allow-Methods" value="GET, OPTIONS, HEAD" />
+    </http-headers>
+
+    <listen-socket>
+        <port>8000</port>
+        <bind-address>0.0.0.0</bind-address>
+    </listen-socket>
+
+    <mount type="default">
+        <public>1</public>
+        <max-listeners>500</max-listeners>
+        <authentication type="url">
+            <option name="stream_auth" value="http://backend:3000/api/internal/icecast/auth"/>
+            <option name="auth_header" value="icecast-auth-user: 1"/>
+        </authentication>
+    </mount>
+
+    <mount type="normal">
+        <mount-name>/live</mount-name>
+        <max-listeners>500</max-listeners>
+        <hidden>0</hidden>
+        <public>1</public>
+        <stream-name>StreamServer Live</stream-name>
+        <stream-description>Professional Live Broadcasting</stream-description>
+        <genre>Various</genre>
+        <bitrate>128</bitrate>
+        <type>audio/mpeg</type>
+        <subtype>mp3</subtype>
+        <charset>UTF-8</charset>
+        <authentication type="url">
+            <option name="stream_auth" value="http://backend:3000/api/internal/icecast/auth"/>
+            <option name="auth_header" value="icecast-auth-user: 1"/>
+        </authentication>
+    </mount>
+
+    <logging>
+        <accesslog>access.log</accesslog>
+        <errorlog>error.log</errorlog>
+        <playlistlog>playlist.log</playlistlog>
+        <loglevel>3</loglevel>
+        <logsize>10000</logsize>
+        <logarchive>1</logarchive>
+    </logging>
+
+    <security>
+        <chroot>0</chroot>
+    </security>
+</icecast>

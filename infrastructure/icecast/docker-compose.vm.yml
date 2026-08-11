@@ -5,14 +5,18 @@
 #
 # Pré-requisitos:
 #   1) Editar icecast.prod.xml (hostname público + passwords CHANGE_ME_*).
-#   2) Abrir a porta TCP 8000 na firewall da VM.
+#      O script setup-icecast-vm.sh gera este ficheiro em ~/streamserver-icecast/
+#   2) Abrir a porta TCP 8000 na firewall da VM (InterServer / CSF / UFW).
 #
-# Arrancar:
+# Arrancar (a partir de infrastructure/icecast):
 #   docker compose -f docker-compose.vm.yml up -d
+# Ou após o setup (workdir ~/streamserver-icecast):
+#   docker compose up -d
 # Ver logs:
-#   docker compose -f docker-compose.vm.yml logs -f icecast
+#   docker compose logs -f icecast
 # Testar (do teu PC):
 #   curl http://SEU_HOST_PUBLICO:8000/status-json.xsl
+#   ../../scripts/verify-icecast-butt.sh SEU_HOST_PUBLICO
 #
 # Depois, no Render (Environment) define:
 #   ICECAST_DISABLED=false
@@ -21,7 +25,8 @@
 #   ICECAST_PORT=8000
 #   ICECAST_ADMIN_USER=admin
 #   ICECAST_ADMIN_PASSWORD=<igual ao admin-password do icecast.prod.xml>
-#   (NÃO definir INTERNAL_API_KEY — senão a auth de fontes é rejeitada)
+#
+# Guia InterServer: INTERSERVER.md
 # =============================================================================
 services:
   icecast:

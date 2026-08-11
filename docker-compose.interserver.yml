@@ -1,0 +1,159 @@
+# =============================================================================
+# StreamServer — produção na VPS InterServer
+# =============================================================================
+# Sobe: Postgres + Redis + Icecast + Backend + Dashboard + Nginx
+#
+#   cp .env.interserver.example .env   # edita SEU_IP e passwords
+#   docker compose -f docker-compose.interserver.yml up -d --build
+#
+# Portas públicas:
+#   80   → dashboard + /api + /stream (Nginx)
+#   8000 → Icecast (BUTT transmite aqui)
+# =============================================================================
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: streamserver-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-streamserver}
+      POSTGRES_USER: ${POSTGRES_USER:-streamadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-streamadmin} -d ${POSTGRES_DB:-streamserver}"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+    networks:
+      - streamserver
+
+  redis:
+    image: redis:7-alpine
+    container_name: streamserver-redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env} --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamserver
+
+  icecast:
+    image: infiniteproject/icecast:latest
+    container_name: streamserver-icecast
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/icecast/icecast.interserver.xml:/etc/icecast2/icecast.xml:ro
+      - icecast_logs:/var/log/icecast2
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/status-json.xsl"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - streamserver
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: streamserver-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      APP_PORT: "3000"
+      APP_URL: ${APP_URL}
+      PUBLIC_STREAM_URL: ${PUBLIC_STREAM_URL:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-streamserver}
+      POSTGRES_USER: ${POSTGRES_USER:-streamadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE_URL: ${DATABASE_URL:-}
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_DISABLED: ${REDIS_DISABLED:-false}
+      ICECAST_DISABLED: "false"
+      ICECAST_HOST: icecast
+      ICECAST_PORT: "8000"
+      PUBLIC_ICECAST_HOST: ${PUBLIC_ICECAST_HOST}
+      ICECAST_ADMIN_USER: ${ICECAST_ADMIN_USER:-admin}
+      ICECAST_ADMIN_PASSWORD: ${ICECAST_ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-24h}
+      MEDIA_STORAGE_PATH: /var/media
+      RECORDINGS_PATH: /var/recordings
+    volumes:
+      - media_storage:/var/media
+      - recordings:/var/recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      icecast:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+    networks:
+      - streamserver
+
+  dashboard:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # Mesmo origem via Nginx → não precisas de VITE_BACKEND_URL
+      args:
+        VITE_BACKEND_URL: ${VITE_BACKEND_URL:-}
+    container_name: streamserver-dashboard
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - streamserver
+
+  nginx:
+    image: nginx:alpine
+    container_name: streamserver-nginx
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/nginx/nginx.interserver.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d/locations.interserver.conf:/etc/nginx/conf.d/locations.interserver.conf:ro
+      - ./player:/usr/share/nginx/html/player:ro
+      - nginx_logs:/var/log/nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - dashboard
+      - icecast
+    networks:
+      - streamserver
+
+volumes:
+  postgres_data:
+  redis_data:
+  icecast_logs:
+  media_storage:
+  recordings:
+  nginx_logs:
+
+networks:
+  streamserver:
+    driver: bridge

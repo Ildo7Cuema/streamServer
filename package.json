@@ -3,7 +3,8 @@
   "private": true,
   "description": "StreamServer monorepo – scripts de conveniência",
   "scripts": {
-    "install:all": "npm install --prefix backend && npm install --prefix frontend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend && npm install",
+    "dev": "concurrently -k -n api,web -c cyan,magenta \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "npm run dev --prefix backend",
     "dev:frontend": "npm run dev --prefix frontend",
     "start:backend": "npm run start --prefix backend",
@@ -13,5 +14,8 @@
     "build:frontend": "npm run build --prefix frontend",
     "icecast:start": "bash scripts/start-icecast.sh",
     "icecast:stop": "bash scripts/stop-icecast.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
   }
 }
