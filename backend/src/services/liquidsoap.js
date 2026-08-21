@@ -66,6 +66,22 @@ async function getStatus() {
   return sendCommand('status');
 }
 
+/** Never throws — InterServer production often has Icecast/BUTT without Liquidsoap. */
+async function getStatusSafe() {
+  try {
+    const status = await sendCommand('status', 2500);
+    return { available: true, status };
+  } catch (error) {
+    return {
+      available: false,
+      status: null,
+      reason: error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED'
+        ? 'not_running'
+        : (error.message || 'unavailable')
+    };
+  }
+}
+
 // Start recording
 async function startRecording() {
   return sendCommand('recording.start');
@@ -96,6 +112,7 @@ module.exports = {
   skipTrack,
   reloadPlaylist,
   getStatus,
+  getStatusSafe,
   startRecording,
   stopRecording,
   getVersion,

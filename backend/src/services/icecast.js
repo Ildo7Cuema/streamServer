@@ -67,24 +67,42 @@ async function getMountStats(mountpoint = '/live') {
   return sources.find(s => s.listenurl && s.listenurl.includes(mountpoint)) || null;
 }
 
+function mountFromListenUrl(listenurl) {
+  if (!listenurl || typeof listenurl !== 'string') return '';
+  try {
+    const path = new URL(listenurl).pathname || '';
+    return path.startsWith('/') ? path : `/${path}`;
+  } catch {
+    const idx = listenurl.lastIndexOf('/');
+    if (idx < 0) return '';
+    const rest = listenurl.slice(idx);
+    // keep /slug/live if possible
+    const match = listenurl.match(/https?:\/\/[^/]+(\/.+)$/i);
+    return match ? match[1] : rest;
+  }
+}
+
 // Get all active mounts
 async function getActiveMounts() {
   const stats = await getServerStats();
   if (!stats || !stats.source) return [];
 
   const sources = Array.isArray(stats.source) ? stats.source : [stats.source];
-  return sources.map(s => ({
-    mount: s.server_name || s.listenurl?.split('/').pop(),
-    listenurl: s.listenurl,
-    listeners: s.listeners || 0,
-    peak_listeners: s.listener_peak || 0,
-    title: s.title || '',
-    artist: s.artist || '',
-    genre: s.genre || '',
-    bitrate: s.bitrate || 0,
-    format: s.server_type || '',
-    stream_start: s.stream_start || null
-  }));
+  return sources.map((s) => {
+    const mount = mountFromListenUrl(s.listenurl) || s.server_name || '';
+    return {
+      mount,
+      listenurl: s.listenurl,
+      listeners: Number(s.listeners) || 0,
+      peak_listeners: Number(s.listener_peak) || 0,
+      title: s.title || '',
+      artist: s.artist || '',
+      genre: s.genre || '',
+      bitrate: s.bitrate || 0,
+      format: s.server_type || '',
+      stream_start: s.stream_start || null
+    };
+  });
 }
 
 // Get listener count for a mount

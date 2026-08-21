@@ -5,29 +5,51 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
-const { sendCommand, getStatus } = require('../services/liquidsoap');
-const { getActiveMounts, killSource } = require('../services/icecast');
+const { sendCommand, getStatusSafe } = require('../services/liquidsoap');
+const { getServerStats, getActiveMounts, killSource } = require('../services/icecast');
 const { broadcast } = require('../services/websocket');
 const logger = require('../utils/logger');
 
-// GET /api/stream/status - Current stream status
+function autodjUnavailable(res) {
+  return res.status(503).json({
+    error: 'AutoDJ (Liquidsoap) não está a correr neste servidor. Transmite com o BUTT para o Icecast.',
+    code: 'AUTODJ_UNAVAILABLE'
+  });
+}
+
+// GET /api/stream/status - Current stream status (Icecast + optional AutoDJ)
 router.get('/status', authenticate, async (req, res) => {
   try {
     if (process.env.ICECAST_DISABLED === 'true' || process.env.SKIP_ICECAST === 'true') {
       return res.json({
+        icecast: { ok: false, disabled: true },
         mounts: [],
-        liquidsoap: null,
+        liquidsoap: { available: false, reason: 'disabled' },
+        autodjAvailable: false,
         disabled: true,
         message: 'Icecast/Liquidsoap disabled (ICECAST_DISABLED)',
         timestamp: new Date().toISOString()
       });
     }
-    const mounts = await getActiveMounts();
-    const liquidsoapStatus = await getStatus();
 
+    const [stats, mounts, liquidsoap] = await Promise.all([
+      getServerStats(),
+      getActiveMounts(),
+      getStatusSafe()
+    ]);
+
+    const icecastOk = Boolean(stats);
     res.json({
+      icecast: {
+        ok: icecastOk,
+        host: process.env.PUBLIC_ICECAST_HOST || process.env.ICECAST_HOST || null,
+        port: Number(process.env.ICECAST_PORT || 8000)
+      },
       mounts,
-      liquidsoap: liquidsoapStatus,
+      listeners: mounts.reduce((sum, m) => sum + (m.listeners || 0), 0),
+      peakListeners: mounts.reduce((max, m) => Math.max(max, m.peak_listeners || 0), 0),
+      liquidsoap,
+      autodjAvailable: Boolean(liquidsoap?.available),
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -39,12 +61,15 @@ router.get('/status', authenticate, async (req, res) => {
 // POST /api/stream/autodj/start - Start AutoDJ
 router.post('/autodj/start', authenticate, authorize('admin', 'manager'), async (req, res) => {
   try {
-    const result = await sendCommand('autodj.start');
+    const result = await sendCommand('autodj.start', 2500);
     broadcast('stream', { action: 'autodj_started' });
     logger.info('AutoDJ started by user:', req.user.username);
     res.json({ message: 'AutoDJ started', result });
   } catch (error) {
     logger.error('Start AutoDJ error:', error);
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || /timeout/i.test(error.message || '')) {
+      return autodjUnavailable(res);
+    }
     res.status(500).json({ error: 'Failed to start AutoDJ' });
   }
 });
@@ -52,12 +77,15 @@ router.post('/autodj/start', authenticate, authorize('admin', 'manager'), async 
 // POST /api/stream/autodj/stop - Stop AutoDJ
 router.post('/autodj/stop', authenticate, authorize('admin', 'manager'), async (req, res) => {
   try {
-    const result = await sendCommand('autodj.stop');
+    const result = await sendCommand('autodj.stop', 2500);
     broadcast('stream', { action: 'autodj_stopped' });
     logger.info('AutoDJ stopped by user:', req.user.username);
     res.json({ message: 'AutoDJ stopped', result });
   } catch (error) {
     logger.error('Stop AutoDJ error:', error);
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || /timeout/i.test(error.message || '')) {
+      return autodjUnavailable(res);
+    }
     res.status(500).json({ error: 'Failed to stop AutoDJ' });
   }
 });
@@ -65,11 +93,14 @@ router.post('/autodj/stop', authenticate, authorize('admin', 'manager'), async (
 // POST /api/stream/autodj/skip - Skip current track
 router.post('/autodj/skip', authenticate, authorize('admin', 'manager', 'dj'), async (req, res) => {
   try {
-    const result = await sendCommand('autodj.skip');
+    const result = await sendCommand('autodj.skip', 2500);
     broadcast('stream', { action: 'track_skipped', by: req.user.username });
     res.json({ message: 'Track skipped', result });
   } catch (error) {
     logger.error('Skip track error:', error);
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || /timeout/i.test(error.message || '')) {
+      return autodjUnavailable(res);
+    }
     res.status(500).json({ error: 'Failed to skip track' });
   }
 });
@@ -97,12 +128,15 @@ router.post('/metadata', authenticate, authorize('admin', 'manager', 'dj'), asyn
 // POST /api/stream/recording/start - Start recording
 router.post('/recording/start', authenticate, authorize('admin', 'manager'), async (req, res) => {
   try {
-    const result = await sendCommand('recording.start');
+    const result = await sendCommand('recording.start', 2500);
     broadcast('stream', { action: 'recording_started' });
     logger.info('Recording started by user:', req.user.username);
     res.json({ message: 'Recording started', result });
   } catch (error) {
     logger.error('Start recording error:', error);
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || /timeout/i.test(error.message || '')) {
+      return autodjUnavailable(res);
+    }
     res.status(500).json({ error: 'Failed to start recording' });
   }
 });
@@ -110,12 +144,15 @@ router.post('/recording/start', authenticate, authorize('admin', 'manager'), asy
 // POST /api/stream/recording/stop - Stop recording
 router.post('/recording/stop', authenticate, authorize('admin', 'manager'), async (req, res) => {
   try {
-    const result = await sendCommand('recording.stop');
+    const result = await sendCommand('recording.stop', 2500);
     broadcast('stream', { action: 'recording_stopped' });
     logger.info('Recording stopped by user:', req.user.username);
     res.json({ message: 'Recording stopped', result });
   } catch (error) {
     logger.error('Stop recording error:', error);
+    if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || /timeout/i.test(error.message || '')) {
+      return autodjUnavailable(res);
+    }
     res.status(500).json({ error: 'Failed to stop recording' });
   }
 });

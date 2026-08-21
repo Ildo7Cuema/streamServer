@@ -23,6 +23,7 @@ export { setButtonLoading, withButtonLoading } from './loading.js';
 let currentUser = null;
 let subscriptionState = null;
 
+export function getCurrentUser() { return currentUser; }
 export function getSubscription() { return subscriptionState; }
 export function setSubscription(s) {
   subscriptionState = s;
@@ -132,6 +133,8 @@ const API_MESSAGES_PT = {
   'Failed to get user profile': 'Falha ao obter perfil',
   'Failed to fetch stations': 'Falha ao carregar estações',
   'Failed to fetch stream status': 'Falha ao obter estado do stream',
+  'AutoDJ (Liquidsoap) não está a correr neste servidor. Transmite com o BUTT para o Icecast.':
+    'AutoDJ (Liquidsoap) não está a correr neste servidor. Transmite com o BUTT para o Icecast.',
   'Failed to start AutoDJ': 'Falha ao iniciar AutoDJ',
   'Failed to stop AutoDJ': 'Falha ao parar AutoDJ',
   'Failed to skip track': 'Falha ao saltar faixa',
