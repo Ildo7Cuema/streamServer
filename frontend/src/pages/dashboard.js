@@ -162,7 +162,7 @@ async function loadStreamCredentials() {
 
     const setupBanner = !configured
       ? `<div style="background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.35);border-radius:8px;padding:12px;margin-bottom:16px;font-size:0.85rem;">
-          <strong style="color:#f59e0b;">⚠️ Servidor Icecast em falta</strong>
+          <strong style="color:var(--warning,#d97e14);">⚠️ Servidor Icecast em falta</strong>
           <p style="margin:8px 0 0;color:var(--text-muted);">${escapeHtml(setup.message || 'Define PUBLIC_ICECAST_HOST no Render com o IP da VPS InterServer (porta 8000).')}</p>
         </div>`
       : '';
@@ -173,7 +173,7 @@ async function loadStreamCredentials() {
         <div>
           <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px;">Transmitir (BUTT)</div>
           <div style="font-size:0.85rem;line-height:1.7;">
-            <div><strong>Servidor:</strong> ${configured ? escapeHtml(ic.host) : '<span style="color:#f59e0b;">Não configurado</span>'}</div>
+            <div><strong>Servidor:</strong> ${configured ? escapeHtml(ic.host) : '<span style="color:var(--warning,#d97e14);">Não configurado</span>'}</div>
             <div><strong>Porta:</strong> ${ic.port}</div>
             <div><strong>Mount:</strong> <code>${escapeHtml(ic.mountpoint)}</code></div>
             <div><strong>Utilizador:</strong> ${escapeHtml(ic.username)}</div>
@@ -270,8 +270,8 @@ async function loadListenerChart(period) {
         datasets: [{
           label: 'Ouvintes',
           data: data.map(d => Math.round(d.avg_listeners)),
-          borderColor: '#6366f1',
-          backgroundColor: 'rgba(99, 102, 241, 0.1)',
+          borderColor: '#3b7cf0',
+          backgroundColor: 'rgba(59, 124, 240, 0.12)',
           fill: true,
           tension: 0.4,
           pointRadius: 2,
@@ -285,12 +285,12 @@ async function loadListenerChart(period) {
         plugins: { legend: { display: false } },
         scales: {
           x: {
-            grid: { color: 'rgba(30,41,59,0.5)' },
-            ticks: { color: '#64748b', font: { size: 11 } }
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            ticks: { color: '#6d7178', font: { size: 11 } }
           },
           y: {
-            grid: { color: 'rgba(30,41,59,0.5)' },
-            ticks: { color: '#64748b', font: { size: 11 } },
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            ticks: { color: '#6d7178', font: { size: 11 } },
             beginAtZero: true
           }
         }
