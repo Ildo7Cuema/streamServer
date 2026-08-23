@@ -728,6 +728,117 @@ input, select, textarea { font-family: inherit; }
 .badge-info { background: var(--info-bg); color: var(--info); }
 
 /* =============================================================================
+   Media Library — toolbar, country chips & discovery grid
+   ============================================================================= */
+
+.media-toolbar {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.media-toolbar input {
+  flex: 1 1 240px;
+  min-width: 200px;
+}
+
+.media-toolbar select {
+  flex: 0 0 auto;
+}
+
+.country-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.country-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.country-chip:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
+}
+
+.country-chip.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--text-accent, var(--accent));
+}
+
+.discover-panel { animation-delay: 0.12s; }
+
+.discover-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.discover-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: all var(--transition);
+  animation: fade-in-up 0.35s ease both;
+}
+
+.discover-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+}
+
+.discover-card img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-secondary);
+}
+
+.discover-card-body { padding: 10px 12px 12px; }
+
+.discover-card-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.discover-card-artist {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 10px;
+}
+
+.discover-card-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.discover-card-actions .btn { flex: 1 1 auto; justify-content: center; padding: 6px 8px; font-size: 0.74rem; }
+
+/* =============================================================================
    Login Modal
    ============================================================================= */
 

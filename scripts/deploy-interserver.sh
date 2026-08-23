@@ -78,6 +78,10 @@ echo ">> A reiniciar serviços..."
 docker compose -f "$COMPOSE_FILE" up -d backend dashboard nginx
 
 echo ""
+echo ">> A aplicar migrações da base de dados..."
+docker compose -f "$COMPOSE_FILE" exec -T backend npm run migrate || echo "AVISO: migração falhou — verifica manualmente com 'docker compose -f $COMPOSE_FILE exec backend npm run migrate'."
+
+echo ""
 echo ">> A verificar saúde do backend (até 60s)..."
 ok=false
 for i in $(seq 1 30); do
