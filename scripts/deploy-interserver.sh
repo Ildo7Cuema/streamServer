@@ -41,11 +41,16 @@ if ! git diff --quiet -- . ':!*.bak' 2>/dev/null; then
   echo "considera 'git update-index --skip-worktree <ficheiro>' uma única vez,"
   echo "para o git deixar de tentar sobrepor-se a eles."
   echo ""
-  read -p "Continuar mesmo assim com 'git pull'? [y/N] " -n 1 -r
-  echo ""
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Deploy cancelado. Resolve as alterações locais e volta a correr o script."
-    exit 1
+  if [ -t 0 ]; then
+    read -p "Continuar mesmo assim com 'git pull'? [y/N] " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "Deploy cancelado. Resolve as alterações locais e volta a correr o script."
+      exit 1
+    fi
+  else
+    echo "A correr sem terminal interativo (ex.: GitHub Actions) — a continuar."
+    echo "O próprio 'git pull' a seguir aborta em segurança se houver risco real de perder alterações."
   fi
 fi
 

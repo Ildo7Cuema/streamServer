@@ -22,5 +22,4 @@ jobs:
           script_stop: true
           script: |
             cd /opt/StreamServer
-            chmod +x scripts/deploy-interserver.sh || true
             bash scripts/deploy-interserver.sh
