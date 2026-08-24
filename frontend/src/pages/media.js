@@ -22,6 +22,53 @@ const TYPE_LABELS = {
 let activeDiscoverCountry = '';
 let currentAudio = null;
 let canManageMedia = false;
+let mediaSearchTimer = null;
+let discoverSearchTimer = null;
+let mediaLoadSeq = 0;
+let discoverLoadSeq = 0;
+
+let libraryCache = [];
+
+function foldClient(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function filterLibrary(files, { search, country, type } = {}) {
+  const tokens = foldClient(search).split(/\s+/).filter(Boolean);
+  return files.filter((f) => {
+    if (country && String(f.country || '').toUpperCase() !== String(country).toUpperCase()) return false;
+    if (type && f.type !== type) return false;
+    if (tokens.length === 0) return true;
+    const hay = foldClient([f.title, f.artist, f.album, f.original_name, f.filename, f.genre].join(' '));
+    return tokens.every((t) => hay.includes(t));
+  });
+}
+
+function getMediaFilters() {
+  return {
+    search: document.getElementById('media-search')?.value || '',
+    country: document.getElementById('media-filter-country')?.value || '',
+    type: document.getElementById('media-filter-type')?.value || ''
+  };
+}
+
+function scheduleMediaSearch() {
+  clearTimeout(mediaSearchTimer);
+  mediaSearchTimer = setTimeout(() => loadMedia(getMediaFilters()), 280);
+}
+
+function scheduleDiscoverSearch() {
+  clearTimeout(discoverSearchTimer);
+  discoverSearchTimer = setTimeout(() => {
+    const q = document.getElementById('discover-search')?.value?.trim() || '';
+    if (q.length === 1) return;
+    runDiscover();
+  }, 400);
+}
 
 export function renderMedia(container) {
   const countryOptions = COUNTRIES.map((c) => `<option value="${c.code}">${c.flag} ${c.name}</option>`).join('');
@@ -80,12 +127,13 @@ export function renderMedia(container) {
       </div>
       <div class="panel-body">
         <div class="media-toolbar">
-          <input id="media-search" placeholder="🔎 Pesquisar por título, artista ou ficheiro..." />
-          <select id="media-filter-country">
+          <input id="media-search" type="search" autocomplete="off" spellcheck="false"
+            placeholder="🔎 Filtrar por título, artista, álbum ou ficheiro..." />
+          <select id="media-filter-country" aria-label="Filtrar por país">
             <option value="">🌍 Todos os países</option>
             ${countryOptions}
           </select>
-          <select id="media-filter-type">
+          <select id="media-filter-type" aria-label="Filtrar por tipo">
             <option value="">Todos os tipos</option>
             ${Object.entries(TYPE_LABELS).map(([v, l]) => `<option value="${v}">${l}</option>`).join('')}
           </select>
@@ -125,7 +173,8 @@ export function renderMedia(container) {
           ${COUNTRIES.map((c) => `<button type="button" class="country-chip" data-code="${c.code}">${c.flag} ${c.name}</button>`).join('')}
         </div>
         <div class="media-toolbar" style="margin-top:14px;">
-          <input id="discover-search" placeholder="Nome do artista ou título (opcional)..." />
+          <input id="discover-search" type="search" autocomplete="off" spellcheck="false"
+            placeholder="Nome do artista ou título (opcional)..." />
           <button class="btn btn-primary btn-sm" id="btn-discover-search">Pesquisar</button>
         </div>
         <div class="discover-grid" id="discover-grid">
@@ -221,11 +270,7 @@ export function renderMedia(container) {
 
   const run = (btn) => withButtonLoading(
     btn || document.getElementById('btn-media-search'),
-    () => loadMedia({
-      search: document.getElementById('media-search')?.value,
-      country: document.getElementById('media-filter-country')?.value,
-      type: document.getElementById('media-filter-type')?.value
-    }),
+    () => loadMedia(getMediaFilters()),
     'A pesquisar...'
   );
 
@@ -236,7 +281,13 @@ export function renderMedia(container) {
     withButtonLoading(e.currentTarget, () => loadMedia({}), 'A atualizar...');
   });
   document.getElementById('btn-media-search')?.addEventListener('click', (e) => run(e.currentTarget));
-  document.getElementById('media-search')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  document.getElementById('media-search')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      run();
+    }
+  });
+  document.getElementById('media-search')?.addEventListener('input', () => scheduleMediaSearch());
   document.getElementById('media-filter-country')?.addEventListener('change', () => run());
   document.getElementById('media-filter-type')?.addEventListener('change', () => run());
 
@@ -264,8 +315,12 @@ export function renderMedia(container) {
     withButtonLoading(e.currentTarget, runDiscover, 'A pesquisar...');
   });
   document.getElementById('discover-search')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') runDiscover();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      runDiscover();
+    }
   });
+  document.getElementById('discover-search')?.addEventListener('input', () => scheduleDiscoverSearch());
 
   const role = getCurrentUser()?.role;
   const canUpload = ['admin', 'manager', 'dj'].includes(role);
@@ -280,30 +335,71 @@ export function renderMedia(container) {
 // Local library
 // -----------------------------------------------------------------------------
 
-async function loadMedia({ search, country, type } = {}) {
+async function loadMedia(filters = {}) {
   const tbody = document.getElementById('media-tbody');
   if (!tbody) return;
+  const seq = ++mediaLoadSeq;
+  const { search, country, type } = filters;
+  const hasFilters = Boolean(String(search || '').trim() || country || type);
+
+  if (libraryCache.length && hasFilters) {
+    const local = filterLibrary(libraryCache, filters);
+    if (local.length) paintMediaTable(local, { total: local.length });
+  }
 
   try {
     const qs = new URLSearchParams();
-    qs.set('limit', '100');
+    qs.set('limit', '200');
     if (search && String(search).trim()) qs.set('search', String(search).trim());
     if (country) qs.set('country', country);
     if (type) qs.set('type', type);
 
     const res = await api(`/media?${qs.toString()}`);
-    const files = res?.files || [];
+    if (seq !== mediaLoadSeq) return;
+    let files = res?.files || [];
 
-    updateStats(res, files);
+    if (!hasFilters) {
+      libraryCache = files;
+    } else if (files.length === 0 && libraryCache.length) {
+      files = filterLibrary(libraryCache, filters);
+    } else if (files.length) {
+      const byId = new Map(libraryCache.map((f) => [f.id, f]));
+      files.forEach((f) => byId.set(f.id, f));
+      libraryCache = Array.from(byId.values());
+    }
 
     if (files.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--text-muted);padding:16px;">Sem resultados.</td></tr>`;
+      const q = String(search || '').trim();
+      const hint = q
+        ? `Sem resultados para “${escapeHtml(q)}”. Tente outro termo ou limpe os filtros.`
+        : 'Sem resultados.';
+      tbody.innerHTML = `<tr><td colspan="7" style="color:var(--text-muted);padding:16px;">${hint}</td></tr>`;
+      updateStats({ total: 0 }, []);
       return;
     }
 
-    tbody.innerHTML = files.map((f) => {
-      const c = COUNTRIES.find((x) => x.code === f.country);
-      return `
+    paintMediaTable(files, res);
+  } catch (e) {
+    if (seq !== mediaLoadSeq) return;
+    const fallback = hasFilters ? filterLibrary(libraryCache, filters) : libraryCache;
+    if (fallback.length) {
+      paintMediaTable(fallback, { total: fallback.length });
+      return;
+    }
+    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:16px;">Falha: ${escapeHtml(e.message || 'erro')}</td></tr>`;
+    toast(e.message || 'Falha ao carregar media', 'error');
+  }
+}
+
+function paintMediaTable(files, res) {
+  const tbody = document.getElementById('media-tbody');
+  if (!tbody) return;
+
+  updateStats(res, files);
+
+  tbody.innerHTML = files.map((f) => {
+    const c = COUNTRIES.find((x) => x.code === f.country);
+    return `
       <tr>
         <td style="font-weight:700;">${escapeHtml(f.title || f.original_name)}</td>
         <td>${escapeHtml(f.artist || '')}</td>
@@ -320,20 +416,16 @@ async function loadMedia({ search, country, type } = {}) {
         </td>
       </tr>
     `;
-    }).join('');
+  }).join('');
 
-    tbody.querySelectorAll('.btn-edit-media').forEach((btn) => {
-      btn.addEventListener('click', () => openEditModal(files.find((f) => f.id === btn.dataset.id)));
+  tbody.querySelectorAll('.btn-edit-media').forEach((btn) => {
+    btn.addEventListener('click', () => openEditModal(files.find((f) => f.id === btn.dataset.id)));
+  });
+  tbody.querySelectorAll('.btn-delete-media').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      withButtonLoading(btn, () => deleteMedia(btn.dataset.id, btn.dataset.name), 'A eliminar...');
     });
-    tbody.querySelectorAll('.btn-delete-media').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        withButtonLoading(btn, () => deleteMedia(btn.dataset.id, btn.dataset.name), 'A eliminar...');
-      });
-    });
-  } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="7" style="color:var(--danger);padding:16px;">Falha: ${escapeHtml(e.message || 'erro')}</td></tr>`;
-    toast(e.message || 'Falha ao carregar media', 'error');
-  }
+  });
 }
 
 function updateStats(res, files) {
@@ -364,7 +456,8 @@ async function deleteMedia(id, name) {
   try {
     await api(`/media/${id}`, { method: 'DELETE' });
     toast('Faixa eliminada', 'warning');
-    await loadMedia({});
+    libraryCache = libraryCache.filter((f) => f.id !== id);
+    await loadMedia(getMediaFilters());
   } catch (e) {
     toast(e.message || 'Falha ao eliminar', 'error');
   }
@@ -414,7 +507,8 @@ async function handleUpload(e) {
       const result = await apiUpload('/media/upload', formData);
       closeUploadModal();
       toast(`${result.uploaded || 1} ficheiro(s) adicionados à biblioteca!`, 'success');
-      await loadMedia({});
+      libraryCache = [];
+      await loadMedia(getMediaFilters());
     } catch (err) {
       errEl.textContent = err.message || 'Erro ao carregar ficheiro';
     }
@@ -459,7 +553,8 @@ async function handleEditSubmit(e) {
       await api(`/media/${id}`, { method: 'PUT', body: JSON.stringify(body) });
       closeEditModal();
       toast('Faixa atualizada', 'success');
-      await loadMedia({});
+      libraryCache = [];
+      await loadMedia(getMediaFilters());
     } catch (err) {
       errEl.textContent = err.message || 'Erro ao guardar';
     }
@@ -473,6 +568,7 @@ async function handleEditSubmit(e) {
 async function runDiscover() {
   const grid = document.getElementById('discover-grid');
   if (!grid) return;
+  const seq = ++discoverLoadSeq;
 
   const q = document.getElementById('discover-search')?.value?.trim() || '';
   if (!q && !activeDiscoverCountry) {
@@ -488,10 +584,14 @@ async function runDiscover() {
     if (activeDiscoverCountry) qs.set('country', activeDiscoverCountry);
 
     const res = await api(`/media/discover?${qs.toString()}`);
+    if (seq !== discoverLoadSeq) return;
     const results = res?.results || [];
 
     if (results.length === 0) {
-      grid.innerHTML = `<p style="color:var(--text-muted);padding:8px 2px;">Sem resultados para esta pesquisa.</p>`;
+      const hint = q
+        ? `Sem resultados para “${escapeHtml(q)}”. Tente só o nome do artista ou o título.`
+        : 'Sem resultados para esta pesquisa.';
+      grid.innerHTML = `<p style="color:var(--text-muted);padding:8px 2px;">${hint}</p>`;
       return;
     }
 
@@ -520,6 +620,7 @@ async function runDiscover() {
       });
     });
   } catch (e) {
+    if (seq !== discoverLoadSeq) return;
     grid.innerHTML = `<p style="color:var(--danger);padding:8px 2px;">Falha: ${escapeHtml(e.message || 'erro')}</p>`;
   }
 }

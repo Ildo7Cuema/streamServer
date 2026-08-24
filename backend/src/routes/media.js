@@ -14,6 +14,121 @@ const logger = require('../utils/logger');
 
 const MEDIA_PATH = process.env.MEDIA_STORAGE_PATH || '/var/media';
 
+// Expressão SQL que ignora acentos/maiúsculas (sem extensão unaccent).
+function foldedCol(column) {
+  return `translate(lower(coalesce(${column}, '')), ` +
+    `'áàãâäéèêëíìîïóòõôöúùûüçñýÿ','aaaaaeeeeiiiiooooouuuucnyy')`;
+}
+
+function foldSearchText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+// Cada palavra tem de aparecer em título, artista, álbum, ficheiro ou género.
+function applyMediaSearch(search, params, whereClause) {
+  const tokens = foldSearchText(search)
+    .replace(/[\\%_]/g, ' ')
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
+    .slice(0, 8);
+
+  if (tokens.length === 0) return whereClause;
+
+  const fields = ['title', 'artist', 'album', 'original_name', 'filename', 'genre']
+    .map(foldedCol);
+
+  for (const token of tokens) {
+    params.push(`%${token}%`);
+    const idx = params.length;
+    whereClause += ` AND (${fields.map((f) => `${f} LIKE $${idx}`).join(' OR ')})`;
+  }
+  return whereClause;
+}
+
+async function fetchJson(url, timeoutMs = 8000) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!response.ok) {
+    throw new Error(`Catálogo externo respondeu ${response.status}`);
+  }
+  return response.json();
+}
+
+function mapDeezerTrack(t) {
+  return {
+    id: `deezer-${t.id}`,
+    title: t.title,
+    artist: t.artist?.name || 'Desconhecido',
+    album: t.album?.title || '',
+    cover: t.album?.cover_medium || t.album?.cover || '',
+    preview: t.preview || '',
+    duration: t.duration || 0,
+    link: t.link || ''
+  };
+}
+
+function mapItunesTrack(t) {
+  const cover = String(t.artworkUrl100 || '').replace('100x100', '300x300');
+  return {
+    id: `itunes-${t.trackId}`,
+    title: t.trackName,
+    artist: t.artistName || 'Desconhecido',
+    album: t.collectionName || '',
+    cover,
+    preview: t.previewUrl || '',
+    duration: t.trackTimeMillis ? Math.round(t.trackTimeMillis / 1000) : 0,
+    link: t.trackViewUrl || ''
+  };
+}
+
+function mergeCatalogResults(lists, max = 25) {
+  const seen = new Set();
+  const out = [];
+  for (const item of lists.flat()) {
+    if (!item?.title) continue;
+    const key = `${foldSearchText(item.artist)}|${foldSearchText(item.title)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+async function searchDeezer(term, limit = 25) {
+  const data = await fetchJson(
+    `https://api.deezer.com/search?q=${encodeURIComponent(term)}&limit=${limit}`
+  );
+  return (data.data || []).map(mapDeezerTrack);
+}
+
+async function searchItunes(term, limit = 25) {
+  const data = await fetchJson(
+    `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&media=music&entity=song&limit=${limit}`
+  );
+  return (data.results || [])
+    .filter((r) => r.kind === 'song' || r.wrapperType === 'track')
+    .map(mapItunesTrack);
+}
+
+async function searchCatalog(term) {
+  try {
+    const deezer = await searchDeezer(term);
+    if (deezer.length > 0) return deezer;
+  } catch (err) {
+    logger.warn(`Deezer search failed for "${term}":`, err.message);
+  }
+  try {
+    return await searchItunes(term);
+  } catch (err) {
+    logger.warn(`iTunes search failed for "${term}":`, err.message);
+    return [];
+  }
+}
+
 // Países suportados no descobridor de música + termos de pesquisa "semente"
 // usados quando o utilizador só escolhe um país (sem termo de pesquisa livre).
 const COUNTRIES = {
@@ -140,30 +255,26 @@ router.get('/discover', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Indica um termo de pesquisa ou escolhe um país' });
     }
 
+    let results = [];
     let searchTerm = q;
-    if (countryInfo) {
-      const seed = countryInfo.seeds[Math.floor(Math.random() * countryInfo.seeds.length)];
-      searchTerm = q ? `${q} ${seed}` : seed;
+
+    if (q) {
+      // Termo do utilizador tal como foi escrito — não misturar com géneros aleatórios.
+      results = await searchCatalog(q);
+      if (countryInfo && results.length < 8) {
+        const extra = await searchCatalog(`${q} ${countryInfo.name}`);
+        results = mergeCatalogResults([results, extra]);
+      }
+    } else {
+      const seeds = countryInfo.seeds.slice(0, 3);
+      searchTerm = seeds[0];
+      const batches = await Promise.all(seeds.map((seed) => searchCatalog(seed)));
+      results = mergeCatalogResults(batches);
+      if (results.length === 0) {
+        results = await searchCatalog(countryInfo.name);
+        searchTerm = countryInfo.name;
+      }
     }
-
-    const url = `https://api.deezer.com/search?q=${encodeURIComponent(searchTerm)}&limit=25`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-
-    if (!response.ok) {
-      throw new Error(`Catálogo externo respondeu ${response.status}`);
-    }
-
-    const data = await response.json();
-    const results = (data.data || []).map((t) => ({
-      id: t.id,
-      title: t.title,
-      artist: t.artist?.name || 'Desconhecido',
-      album: t.album?.title || '',
-      cover: t.album?.cover_medium || t.album?.cover || '',
-      preview: t.preview || '',
-      duration: t.duration || 0,
-      link: t.link || ''
-    }));
 
     res.json({
       query: searchTerm,
@@ -179,7 +290,9 @@ router.get('/discover', authenticate, async (req, res) => {
 // GET /api/media - List media files
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { type, page = 1, limit = 50, search, country } = req.query;
+    const { type, search, country } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
     const offset = (page - 1) * limit;
     let whereClause = 'WHERE 1=1';
     const params = [];
@@ -194,10 +307,7 @@ router.get('/', authenticate, async (req, res) => {
       whereClause += ` AND country = $${params.length}`;
     }
 
-    if (search) {
-      params.push(`%${search}%`);
-      whereClause += ` AND (title ILIKE $${params.length} OR artist ILIKE $${params.length} OR original_name ILIKE $${params.length})`;
-    }
+    whereClause = applyMediaSearch(search, params, whereClause);
 
     const countResult = await query(
       `SELECT COUNT(*) FROM media_files ${whereClause}`, params
@@ -210,9 +320,9 @@ router.get('/', authenticate, async (req, res) => {
     );
 
     res.json({
-      total: parseInt(countResult.rows[0].count),
-      page: parseInt(page),
-      limit: parseInt(limit),
+      total: parseInt(countResult.rows[0].count, 10),
+      page,
+      limit,
       files: result.rows
     });
   } catch (error) {
