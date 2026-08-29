@@ -7,7 +7,8 @@
 #   docker compose -f docker-compose.interserver.yml up -d --build
 #
 # Portas públicas:
-#   80   → dashboard + /api + /stream (Nginx)
+#   80   → redirect HTTPS + ACME challenge
+#   443  → dashboard + /api + /stream (Nginx + Let's Encrypt)
 #   8000 → Icecast (BUTT transmite aqui)
 # =============================================================================
 
@@ -139,9 +140,12 @@ services:
       - ./infrastructure/nginx/nginx.interserver.conf:/etc/nginx/nginx.conf:ro
       - ./infrastructure/nginx/conf.d/locations.interserver.conf:/etc/nginx/conf.d/locations.interserver.conf:ro
       - ./player:/usr/share/nginx/html/player:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
     ports:
       - "80:80"
+      - "443:443"
     depends_on:
       - backend
       - dashboard
@@ -156,6 +160,7 @@ volumes:
   media_storage:
   recordings:
   nginx_logs:
+  certbot_webroot:
 
 networks:
   streamserver:
