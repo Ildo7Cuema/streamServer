@@ -3,23 +3,40 @@
 # Deploy seguro — StreamServer na VPS InterServer
 # =============================================================================
 # Uso: ./scripts/deploy-interserver.sh
-#
-# Em vez de correr git pull / docker compose build / up manualmente (e correr
-# o risco de um passo falhar em silêncio, como já aconteceu), este script:
-#   1) sincroniza o código com origin/main (pull manual ou reset em CI)
-#   2) reconstrói e reinicia backend, dashboard e nginx
-#   3) aplica migrações
-#   4) espera pelo backend e confirma /api/health antes de dizer "sucesso"
-#
-# Corre a partir da raiz do projecto (ex.: /opt/StreamServer).
+#      FORCE_SYNC=1 ./scripts/deploy-interserver.sh   # força sync com GitHub
+#      CI=true ./scripts/deploy-interserver.sh          # modo GitHub Actions
 # =============================================================================
 set -euo pipefail
 
 COMPOSE_FILE="docker-compose.interserver.yml"
 HEALTH_URL="http://localhost/api/health"
 
+# Ficheiros frequentemente editados à mão na VPS (skip-worktree bloqueia reset).
+VPS_LOCAL_CONFIGS=(
+  infrastructure/nginx/nginx.interserver.conf
+  infrastructure/nginx/conf.d/locations.interserver.conf
+  docker-compose.interserver.yml
+  infrastructure/icecast/icecast.interserver.xml
+)
+
 is_ci() {
   [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]
+}
+
+force_sync_origin() {
+  echo ">> A sincronizar com origin/main (forçado)..."
+  git fetch origin main
+
+  echo ">> A remover flags skip-worktree / assume-unchanged..."
+  for f in "${VPS_LOCAL_CONFIGS[@]}"; do
+    [ -e "$f" ] || continue
+    git update-index --no-skip-worktree "$f" 2>/dev/null || true
+    git update-index --no-assume-unchanged "$f" 2>/dev/null || true
+  done
+
+  # Descarta alterações locais em ficheiros tracked (mantém .env intacto).
+  git checkout -f main 2>/dev/null || git checkout -f
+  git reset --hard origin/main
 }
 
 echo "=============================================="
@@ -36,26 +53,22 @@ echo ">> A verificar estado do git..."
 BEFORE_COMMIT=$(git rev-parse --short HEAD)
 echo ">> Commit actual: $BEFORE_COMMIT"
 
-if is_ci; then
-  echo ""
-  echo ">> Modo automático (CI): sincronizar com origin/main..."
+if is_ci || [ "${FORCE_SYNC:-}" = "1" ]; then
   if ! git diff --quiet -- . ':!*.bak' 2>/dev/null; then
-    echo "AVISO: alterações locais na VPS serão descartadas para igualar o GitHub:"
+    echo "AVISO: alterações locais serão descartadas para igualar o GitHub:"
     git status --short || true
   fi
-  git fetch origin main
-  git reset --hard origin/main
+  force_sync_origin
 else
   if ! git diff --quiet -- . ':!*.bak' 2>/dev/null; then
     echo ""
-    echo "AVISO: há ficheiros com alterações locais não commitadas:"
+    echo "AVISO: há alterações locais não commitadas:"
     git status --short
     echo ""
-    echo "Se estes ficheiros também mudaram no repositório remoto, o 'git pull'"
-    echo "vai abortar. Para configs editadas à mão na VPS, usa:"
-    echo "  git update-index --skip-worktree <ficheiro>"
+    echo "Para forçar sync com GitHub (descarta alterações locais em ficheiros tracked):"
+    echo "  FORCE_SYNC=1 bash scripts/deploy-interserver.sh"
     echo ""
-    read -p "Continuar mesmo assim com 'git pull'? [y/N] " -n 1 -r
+    read -p "Continuar com 'git pull'? [y/N] " -n 1 -r
     echo ""
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
       echo "Deploy cancelado."
@@ -67,9 +80,9 @@ else
   echo ">> git pull..."
   if ! git pull origin main; then
     echo ""
-    echo "Erro: 'git pull' falhou (provavelmente conflito com ficheiros locais)." >&2
-    echo "Na VPS podes forçar sync com:" >&2
-    echo "  git fetch origin main && git reset --hard origin/main" >&2
+    echo "Erro: 'git pull' falhou." >&2
+    echo "Corre com sync forçado:" >&2
+    echo "  FORCE_SYNC=1 bash scripts/deploy-interserver.sh" >&2
     exit 1
   fi
 fi
@@ -84,7 +97,7 @@ fi
 
 echo ""
 echo ">> A reconstruir imagens (backend + dashboard)..."
-docker compose -f "$COMPOSE_FILE" build --pull backend dashboard
+docker compose -f "$COMPOSE_FILE" build backend dashboard
 
 echo ""
 echo ">> A reiniciar serviços..."

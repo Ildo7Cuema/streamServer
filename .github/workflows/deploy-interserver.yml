@@ -23,4 +23,4 @@ jobs:
           script: |
             set -e
             cd /opt/StreamServer
-            CI=true GITHUB_ACTIONS=true bash scripts/deploy-interserver.sh
+            CI=true FORCE_SYNC=1 bash scripts/deploy-interserver.sh
