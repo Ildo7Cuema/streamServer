@@ -15,7 +15,9 @@ const {
   activateSubscription,
   createPendingSubscription,
   getSubscriptionSummary,
-  getActiveSubscription
+  getActiveSubscription,
+  generatePaymentReference,
+  withPaymentReference
 } = require('../services/subscriptions');
 const { getPaymentInstructions, formatPlanPrice } = require('../utils/paymentConfig');
 const logger = require('../utils/logger');
@@ -92,12 +94,14 @@ router.post('/subscribe', authenticate, requireActiveAccount, async (req, res) =
 
     const pending = await createPendingSubscription(req.user.id, plan_id);
     const payment = getPaymentInstructions(plan);
+    const paymentReference = generatePaymentReference(pending.id);
 
     res.status(202).json({
       message: 'Pedido registado. Transfere via Express e envia o comprovativo.',
-      subscription: pending,
+      subscription: withPaymentReference(pending),
       plan: formatPlan(plan),
-      payment,
+      payment: { ...payment, paymentReference },
+      paymentReference,
       code: 'AWAITING_PAYMENT_PROOF'
     });
   } catch (error) {
@@ -129,6 +133,8 @@ router.post('/proof', authenticate, requireActiveAccount, uploadProof.single('pr
       return res.status(404).json({ error: 'Pedido de assinatura não encontrado ou já processado' });
     }
     const subscription = sub.rows[0];
+    const transferRef = (transfer_reference && String(transfer_reference).trim())
+      || generatePaymentReference(subscription_id);
 
     const existingProof = await query(
       `SELECT id FROM payment_proofs WHERE user_id = $1 AND status = 'pending'`,
@@ -149,7 +155,7 @@ router.post('/proof', authenticate, requireActiveAccount, uploadProof.single('pr
         req.user.id,
         subscription_id,
         subscription.plan_id,
-        transfer_reference || null,
+        transferRef,
         req.file.path,
         req.file.originalname,
         req.file.mimetype,
@@ -161,7 +167,7 @@ router.post('/proof', authenticate, requireActiveAccount, uploadProof.single('pr
     logger.info(`Payment proof uploaded: user=${req.user.username} plan=${subscription.plan_name}`);
 
     res.status(201).json({
-      message: 'Comprovativo enviado! O administrador irá verificar e activar a tua assinatura.',
+      message: 'Comprovativo enviado! Confirma no WhatsApp e aguarda aprovação do administrador.',
       proof: {
         id: result.rows[0].id,
         status: 'pending',

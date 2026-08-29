@@ -176,13 +176,42 @@
   <!-- Confirm Modal -->
   <div class="modal-overlay" id="confirm-modal">
     <div class="confirm-card">
-      <div class="confirm-icon" aria-hidden="true">⚠️</div>
+      <div class="confirm-icon" id="confirm-modal-icon" aria-hidden="true">⚠️</div>
       <h2 class="confirm-title" id="confirm-modal-title">Confirmar</h2>
       <p class="confirm-message" id="confirm-modal-message"></p>
       <p class="confirm-detail" id="confirm-modal-detail" style="display:none;"></p>
       <div class="confirm-actions">
         <button type="button" class="btn btn-outline" id="confirm-modal-cancel">Cancelar</button>
         <button type="button" class="btn btn-primary" id="confirm-modal-ok">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Prompt Modal -->
+  <div class="modal-overlay" id="prompt-modal">
+    <div class="confirm-card prompt-card">
+      <div class="confirm-icon" id="prompt-modal-icon" aria-hidden="true">✏️</div>
+      <h2 class="confirm-title" id="prompt-modal-title">Introduzir</h2>
+      <p class="confirm-message" id="prompt-modal-message"></p>
+      <div class="prompt-field">
+        <input type="text" id="prompt-modal-input" class="prompt-input" autocomplete="off">
+      </div>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-outline" id="prompt-modal-cancel">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="prompt-modal-ok">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Select Modal -->
+  <div class="modal-overlay" id="select-modal">
+    <div class="confirm-card select-card">
+      <div class="confirm-icon" id="select-modal-icon" aria-hidden="true">📋</div>
+      <h2 class="confirm-title" id="select-modal-title">Escolher</h2>
+      <p class="confirm-message" id="select-modal-message"></p>
+      <div class="select-options" id="select-modal-options"></div>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-outline" id="select-modal-cancel">Cancelar</button>
       </div>
     </div>
   </div>

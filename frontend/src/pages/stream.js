@@ -2,7 +2,7 @@
 // Stream Control Page — Icecast / BUTT (AutoDJ opcional)
 // =============================================================================
 
-import { api, toast, withButtonLoading, getCurrentUser } from '../app.js';
+import { api, toast, withButtonLoading, getCurrentUser, confirmDialog } from '../app.js';
 
 let refreshTimer = null;
 
@@ -175,7 +175,15 @@ async function copyText(text) {
 }
 
 async function kickMount(mount) {
-  if (!confirm(`Desligar a fonte em ${mount}?`)) return;
+  const ok = await confirmDialog({
+    title: 'Desligar fonte',
+    message: `Desligar a fonte em <span class="confirm-highlight">${escapeHtml(mount)}</span>?`,
+    detail: 'A transmissão ao vivo será interrompida.',
+    confirmText: 'Desligar',
+    danger: true,
+    icon: '📡'
+  });
+  if (!ok) return;
   try {
     await api('/stream/kick', { method: 'POST', body: JSON.stringify({ mount }) });
     toast('Fonte desligada', 'success');

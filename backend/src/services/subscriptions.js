@@ -160,7 +160,7 @@ async function getSubscriptionSummary(userId, role) {
     expiresAt: sub?.expires_at || null,
     planName: sub?.plan_name || null,
     pendingProof: pendingProof.rows[0] || null,
-    pendingSubscription: pendingSub.rows[0] || null,
+    pendingSubscription: pendingSub.rows[0] ? withPaymentReference(pendingSub.rows[0]) : null,
     awaitingPayment: !sub && (pendingProof.rows.length > 0 || pendingSub.rows.length > 0)
   };
 }
@@ -175,6 +175,16 @@ async function getPendingSubscription(userId) {
     [userId]
   );
   return result.rows[0] || null;
+}
+
+function generatePaymentReference(subscriptionId) {
+  const compact = String(subscriptionId).replace(/-/g, '').toUpperCase();
+  return `SS-${compact.slice(0, 8)}`;
+}
+
+function withPaymentReference(subscription) {
+  if (!subscription?.id) return subscription;
+  return { ...subscription, paymentReference: generatePaymentReference(subscription.id) };
 }
 
 async function approvePaymentProof(proofId, adminId) {
@@ -221,5 +231,7 @@ module.exports = {
   createPendingSubscription,
   getSubscriptionSummary,
   approvePaymentProof,
-  logAdminAction
+  logAdminAction,
+  generatePaymentReference,
+  withPaymentReference
 };

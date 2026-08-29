@@ -997,6 +997,77 @@ input, select, textarea { font-family: inherit; }
   padding: 10px 18px;
 }
 
+.prompt-card,
+.select-card {
+  width: 440px;
+  max-width: 92vw;
+}
+
+.prompt-field {
+  text-align: left;
+  margin-top: 16px;
+}
+
+.prompt-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.prompt-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 126, 18, 0.15);
+}
+
+.select-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+  text-align: left;
+}
+
+.select-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), transform var(--transition-fast);
+}
+
+.select-option:hover {
+  border-color: var(--accent);
+  background: rgba(255, 126, 18, 0.08);
+  transform: translateY(-1px);
+}
+
+.select-option-label {
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.select-option-detail {
+  font-size: 0.85rem;
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .login-brand {
   text-align: center;
   margin-bottom: 32px;
@@ -1531,7 +1602,7 @@ input, select, textarea { font-family: inherit; }
 }
 .payment-steps li { margin-bottom: 4px; }
 .payment-detail { margin-bottom: 12px; }
-.payment-phone, .payment-amount { font-size: 1.1rem; font-weight: 700; color: #FF7E12; }
+.payment-phone, .payment-amount, .payment-reference { font-size: 1.1rem; font-weight: 700; color: #FF7E12; }
 .payment-note {
   font-size: 0.82rem;
   color: var(--text-muted);
@@ -1540,6 +1611,55 @@ input, select, textarea { font-family: inherit; }
 }
 .payment-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .payment-actions .btn-primary { flex: 1; }
+.payment-whatsapp-hint {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+.btn-whatsapp {
+  background: #25D366;
+  color: #fff;
+  border: none;
+  font-weight: 700;
+}
+.btn-whatsapp:hover { background: #1ebe57; color: #fff; }
+
+.input-with-copy {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.input-with-copy input {
+  flex: 1;
+}
+.input-with-copy input[readonly] {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: default;
+}
+
+.proof-preview-card { max-width: 900px; width: 100%; }
+.proof-preview-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  max-height: 75vh;
+  overflow: auto;
+}
+.proof-preview-image {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.proof-preview-frame {
+  width: 100%;
+  min-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
 
 .sub-badge {
   margin-left: auto;

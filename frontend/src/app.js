@@ -351,6 +351,39 @@ export async function apiUpload(path, formData, options = {}) {
   return data ?? {};
 }
 
+export async function apiBlob(path, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = { ...options.headers };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    if (!options._retried && localStorage.getItem('refreshToken')) {
+      try {
+        await refreshSession();
+        return apiBlob(path, { ...options, _retried: true });
+      } catch { /* fall through */ }
+    }
+    clearAuth();
+    showLogin();
+    setAuthMode('login');
+    throw new Error('Sessão expirada. Inicia sessão novamente.');
+  }
+
+  if (!res.ok) {
+    const raw = await res.text();
+    const data = parseResponseBody(raw);
+    const rawMsg =
+      (data && (data.error || data.message)) ||
+      (raw && raw.trim()) ||
+      `Request failed (${res.status})`;
+    throw new Error(translateMessage(rawMsg));
+  }
+
+  return res.blob();
+}
+
 // =============================================================================
 // Toast Notifications
 // =============================================================================
@@ -370,6 +403,8 @@ function escapeHtml(str) {
 }
 
 let confirmResolve = null;
+let promptResolve = null;
+let selectResolve = null;
 
 function closeConfirmModal(result) {
   const modal = document.getElementById('confirm-modal');
@@ -381,16 +416,47 @@ function closeConfirmModal(result) {
   }
 }
 
+function closePromptModal(result) {
+  const modal = document.getElementById('prompt-modal');
+  modal?.classList.remove('active');
+  if (promptResolve) {
+    const resolve = promptResolve;
+    promptResolve = null;
+    resolve(result);
+  }
+}
+
+function closeSelectModal(result) {
+  const modal = document.getElementById('select-modal');
+  modal?.classList.remove('active');
+  const optionsEl = document.getElementById('select-modal-options');
+  if (optionsEl) optionsEl.innerHTML = '';
+  if (selectResolve) {
+    const resolve = selectResolve;
+    selectResolve = null;
+    resolve(result);
+  }
+}
+
+const CONFIRM_VARIANTS = {
+  primary: 'btn btn-primary',
+  success: 'btn btn-success',
+  danger: 'btn btn-danger'
+};
+
 export function confirmDialog({
   title = 'Confirmar',
   message = '',
   detail = '',
   confirmText = 'Confirmar',
   cancelText = 'Cancelar',
-  danger = false
+  danger = false,
+  variant = danger ? 'danger' : 'primary',
+  icon = danger ? '⚠️' : '❓'
 } = {}) {
   return new Promise((resolve) => {
     const modal = document.getElementById('confirm-modal');
+    const iconEl = document.getElementById('confirm-modal-icon');
     const titleEl = document.getElementById('confirm-modal-title');
     const messageEl = document.getElementById('confirm-modal-message');
     const detailEl = document.getElementById('confirm-modal-detail');
@@ -403,16 +469,94 @@ export function confirmDialog({
     }
 
     confirmResolve = resolve;
+    if (iconEl) iconEl.textContent = icon;
     titleEl.textContent = title;
     messageEl.innerHTML = message;
     detailEl.textContent = detail;
     detailEl.style.display = detail ? 'block' : 'none';
     okBtn.textContent = confirmText;
     cancelBtn.textContent = cancelText;
-    okBtn.className = danger ? 'btn btn-danger' : 'btn btn-primary';
+    okBtn.className = CONFIRM_VARIANTS[variant] || CONFIRM_VARIANTS.primary;
 
     modal.classList.add('active');
     okBtn.focus();
+  });
+}
+
+export function promptDialog({
+  title = 'Introduzir',
+  message = '',
+  placeholder = '',
+  defaultValue = '',
+  confirmText = 'Confirmar',
+  cancelText = 'Cancelar',
+  icon = '✏️'
+} = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('prompt-modal');
+    const iconEl = document.getElementById('prompt-modal-icon');
+    const titleEl = document.getElementById('prompt-modal-title');
+    const messageEl = document.getElementById('prompt-modal-message');
+    const inputEl = document.getElementById('prompt-modal-input');
+    const okBtn = document.getElementById('prompt-modal-ok');
+    const cancelBtn = document.getElementById('prompt-modal-cancel');
+
+    if (!modal || !titleEl || !messageEl || !inputEl || !okBtn || !cancelBtn) {
+      resolve(null);
+      return;
+    }
+
+    promptResolve = resolve;
+    if (iconEl) iconEl.textContent = icon;
+    titleEl.textContent = title;
+    messageEl.innerHTML = message;
+    inputEl.value = defaultValue;
+    inputEl.placeholder = placeholder;
+
+    modal.classList.add('active');
+    inputEl.focus();
+    inputEl.select();
+  });
+}
+
+export function selectDialog({
+  title = 'Escolher',
+  message = '',
+  options = [],
+  cancelText = 'Cancelar',
+  icon = '📋'
+} = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('select-modal');
+    const iconEl = document.getElementById('select-modal-icon');
+    const titleEl = document.getElementById('select-modal-title');
+    const messageEl = document.getElementById('select-modal-message');
+    const optionsEl = document.getElementById('select-modal-options');
+    const cancelBtn = document.getElementById('select-modal-cancel');
+
+    if (!modal || !titleEl || !messageEl || !optionsEl || !cancelBtn) {
+      resolve(null);
+      return;
+    }
+
+    selectResolve = resolve;
+    if (iconEl) iconEl.textContent = icon;
+    titleEl.textContent = title;
+    messageEl.innerHTML = message;
+    cancelBtn.textContent = cancelText;
+
+    optionsEl.innerHTML = options.map((opt) => `
+      <button type="button" class="select-option" data-value="${escapeHtml(String(opt.value ?? ''))}">
+        <span class="select-option-label">${escapeHtml(opt.label || '')}</span>
+        ${opt.detail ? `<span class="select-option-detail">${escapeHtml(opt.detail)}</span>` : ''}
+      </button>
+    `).join('');
+
+    optionsEl.querySelectorAll('.select-option').forEach((btn) => {
+      btn.addEventListener('click', () => closeSelectModal(btn.dataset.value));
+    });
+
+    modal.classList.add('active');
   });
 }
 
@@ -438,9 +582,48 @@ function initConfirmModal() {
   modal?.addEventListener('click', (e) => {
     if (e.target === modal) closeConfirmModal(false);
   });
+}
+
+function initPromptModal() {
+  const modal = document.getElementById('prompt-modal');
+  const inputEl = document.getElementById('prompt-modal-input');
+  const okBtn = document.getElementById('prompt-modal-ok');
+  const cancelBtn = document.getElementById('prompt-modal-cancel');
+
+  okBtn?.addEventListener('click', () => {
+    closePromptModal(inputEl?.value?.trim() ?? '');
+  });
+  cancelBtn?.addEventListener('click', () => closePromptModal(null));
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closePromptModal(null);
+  });
+  inputEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      closePromptModal(inputEl.value.trim());
+    }
+  });
+}
+
+function initSelectModal() {
+  const modal = document.getElementById('select-modal');
+  const cancelBtn = document.getElementById('select-modal-cancel');
+
+  cancelBtn?.addEventListener('click', () => closeSelectModal(null));
+  modal?.addEventListener('click', (e) => {
+    if (e.target === modal) closeSelectModal(null);
+  });
+}
+
+function initDialogKeyboard() {
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && modal?.classList.contains('active')) {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('confirm-modal')?.classList.contains('active')) {
       closeConfirmModal(false);
+    } else if (document.getElementById('prompt-modal')?.classList.contains('active')) {
+      closePromptModal(null);
+    } else if (document.getElementById('select-modal')?.classList.contains('active')) {
+      closeSelectModal(null);
     }
   });
 }
@@ -627,6 +810,9 @@ function navigateTo(page) {
 document.addEventListener('DOMContentLoaded', async () => {
   showAppLoader('A iniciar...');
   initConfirmModal();
+  initPromptModal();
+  initSelectModal();
+  initDialogKeyboard();
 
   document.getElementById('toggle-register')?.addEventListener('click', () => setAuthMode('signup'));
   document.getElementById('toggle-login')?.addEventListener('click', () => setAuthMode('login'));

@@ -13,9 +13,17 @@ function formatExpressPhone(phone) {
   return `+244 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
 }
 
+function normalizeWhatsAppPhone(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  return digits.startsWith('244') ? digits : `244${normalizeExpressPhone(raw)}`;
+}
+
 function getPaymentInstructions(plan = null) {
   const phone = normalizeExpressPhone(process.env.PAYMENT_EXPRESS_PHONE || '921923232');
   const phoneFormatted = formatExpressPhone(phone);
+  const whatsappPhone = normalizeWhatsAppPhone(
+    process.env.PAYMENT_WHATSAPP_PHONE || process.env.PAYMENT_EXPRESS_PHONE || '921923232'
+  );
   const name = process.env.PAYMENT_EXPRESS_NAME || 'StreamServer';
   const iban = process.env.PAYMENT_IBAN || '';
   const bank = process.env.PAYMENT_BANK_NAME || '';
@@ -28,7 +36,7 @@ function getPaymentInstructions(plan = null) {
     `Número Express: ${phone}`,
     amountKz != null ? `Valor exacto: ${formatKwanza(amountKz)}` : 'Valor: conforme o plano escolhido.',
     'Confirma a transferência e guarda o comprovativo.',
-    'Envia o comprovativo nesta plataforma (imagem ou PDF).',
+    'Envia o comprovativo nesta plataforma e confirma no WhatsApp.',
     'A activação é feita após verificação pelo administrador (até 24h úteis).'
   ];
 
@@ -39,6 +47,8 @@ function getPaymentInstructions(plan = null) {
     recipientName: name,
     expressPhone: phone,
     expressPhoneFormatted: phoneFormatted,
+    whatsappPhone,
+    whatsappPhoneFormatted: formatExpressPhone(whatsappPhone.slice(3)),
     bankName: bank || null,
     iban: iban || null,
     amountKz,
@@ -74,5 +84,6 @@ module.exports = {
   formatKwanza,
   formatPlanPrice,
   formatExpressPhone,
-  normalizeExpressPhone
+  normalizeExpressPhone,
+  normalizeWhatsAppPhone
 };

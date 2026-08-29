@@ -3,6 +3,8 @@
 // =============================================================================
 
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const router = express.Router();
 const { query, getClient } = require('../database/connection');
 const { authenticate, authorize } = require('../middleware/auth');
@@ -16,6 +18,8 @@ const { formatPlanPrice } = require('../utils/paymentConfig');
 const logger = require('../utils/logger');
 
 router.use(authenticate, authorize('admin'));
+
+const PROOFS_PATH = path.resolve(process.env.PAYMENT_PROOFS_PATH || '/tmp/streamserver-proofs');
 
 // GET /api/admin/users
 router.get('/users', async (req, res) => {
@@ -225,6 +229,38 @@ router.get('/payment-proofs', async (req, res) => {
     })));
   } catch (error) {
     res.status(500).json({ error: 'Failed to list payment proofs' });
+  }
+});
+
+// GET /api/admin/payment-proofs/:id/file — ver comprovativo
+router.get('/payment-proofs/:id/file', async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT file_path, mime_type, original_filename FROM payment_proofs WHERE id = $1`,
+      [req.params.id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Comprovativo não encontrado' });
+    }
+
+    const proof = result.rows[0];
+    const resolved = path.resolve(proof.file_path);
+    if (!resolved.startsWith(PROOFS_PATH)) {
+      return res.status(403).json({ error: 'Acesso negado' });
+    }
+    if (!fs.existsSync(resolved)) {
+      return res.status(404).json({ error: 'Ficheiro não encontrado' });
+    }
+
+    res.setHeader('Content-Type', proof.mime_type || 'application/octet-stream');
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(proof.original_filename || 'comprovativo')}"`
+    );
+    res.sendFile(resolved);
+  } catch (error) {
+    logger.error('Admin proof file error:', error);
+    res.status(500).json({ error: 'Failed to fetch proof file' });
   }
 });
 

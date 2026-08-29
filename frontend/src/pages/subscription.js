@@ -2,10 +2,15 @@
 // Subscription Plans Page
 // =============================================================================
 
-import { api, apiUpload, toast, getSubscription, setSubscription, withButtonLoading } from '../app.js';
+import { api, apiUpload, toast, getSubscription, setSubscription, getCurrentUser, withButtonLoading } from '../app.js';
 
 const MULTICAIXA_EXPRESS_PHONE = normalizeExpressPhone(
   import.meta.env.VITE_PAYMENT_EXPRESS_PHONE || '921923232'
+);
+const WHATSAPP_PHONE = normalizeWhatsAppPhone(
+  import.meta.env.VITE_PAYMENT_WHATSAPP_PHONE
+  || import.meta.env.VITE_PAYMENT_EXPRESS_PHONE
+  || '921923232'
 );
 
 let pendingPaymentContext = null;
@@ -14,6 +19,42 @@ function normalizeExpressPhone(raw) {
   const digits = String(raw ?? '').replace(/\D/g, '');
   const local = digits.startsWith('244') ? digits.slice(3) : digits;
   return local.length === 9 ? local : '921923232';
+}
+
+function normalizeWhatsAppPhone(raw) {
+  const digits = String(raw ?? '').replace(/\D/g, '');
+  return digits.startsWith('244') ? digits : `244${normalizeExpressPhone(raw)}`;
+}
+
+function buildWhatsAppUrl({ planName, amount, reference, username, email }) {
+  const lines = [
+    'Olá! Envio comprovativo de assinatura StreamServer.',
+    '',
+    `Plano: ${planName || '—'}`,
+    amount ? `Valor: ${amount}` : null,
+    username ? `Utilizador: ${username}` : null,
+    email ? `Email: ${email}` : null,
+    reference ? `Referência: ${reference}` : null,
+    '',
+    'Segue o comprovativo em anexo.'
+  ].filter(Boolean);
+  return `https://wa.me/${WHATSAPP_PHONE}?text=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+function openWhatsAppProof(context = {}) {
+  const url = buildWhatsAppUrl(context);
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function generatePaymentReference(subscriptionId) {
+  const compact = String(subscriptionId ?? '').replace(/-/g, '').toUpperCase();
+  return compact ? `SS-${compact.slice(0, 8)}` : '';
+}
+
+function resolvePaymentReference(subscription = {}, payment = {}) {
+  return subscription.paymentReference
+    || payment.paymentReference
+    || generatePaymentReference(subscription.id);
 }
 
 export function renderSubscription(container) {
@@ -68,10 +109,28 @@ export function renderSubscription(container) {
 
         <p class="payment-note" id="payment-note"></p>
 
+        <div class="cred-section payment-detail">
+          <div class="cred-section-header">
+            <span>💬 WhatsApp — enviar comprovativo</span>
+          </div>
+          <p class="payment-whatsapp-hint">
+            Após o pagamento, envia o comprovativo para
+            <strong id="payment-whatsapp-display">+244 921 923 232</strong>
+            via WhatsApp.
+          </p>
+          <button type="button" class="btn btn-whatsapp btn-full" id="btn-whatsapp-proof">
+            Enviar comprovativo no WhatsApp
+          </button>
+        </div>
+
         <form id="proof-form">
           <div class="form-group">
-            <label for="proof-reference">Referência da transferência (opcional)</label>
-            <input type="text" id="proof-reference" placeholder="Ex: TRF-123456" maxlength="100">
+            <label for="proof-reference">Referência da transferência</label>
+            <div class="input-with-copy">
+              <input type="text" id="proof-reference" readonly maxlength="100">
+              <button type="button" class="btn btn-outline btn-sm" id="btn-copy-reference">Copiar</button>
+            </div>
+            <small style="color:var(--text-muted);">Preenchida automaticamente — usa esta referência na transferência.</small>
           </div>
           <div class="form-group">
             <label for="proof-file">Comprovativo de pagamento *</label>
@@ -80,7 +139,7 @@ export function renderSubscription(container) {
           </div>
           <p class="login-error" id="proof-form-error"></p>
           <div class="payment-actions">
-            <button type="submit" class="btn btn-primary" id="btn-submit-proof">Enviar comprovativo</button>
+            <button type="submit" class="btn btn-primary" id="btn-submit-proof">Enviar e confirmar no WhatsApp</button>
             <button type="button" class="btn btn-outline" id="btn-payment-later">Fechar</button>
           </div>
         </form>
@@ -101,6 +160,12 @@ export function renderSubscription(container) {
   });
   document.getElementById('btn-copy-amount')?.addEventListener('click', () => {
     copyText(document.getElementById('payment-amount')?.textContent, 'Valor copiado!');
+  });
+  document.getElementById('btn-copy-reference')?.addEventListener('click', () => {
+    copyText(document.getElementById('proof-reference')?.value, 'Referência copiada!');
+  });
+  document.getElementById('btn-whatsapp-proof')?.addEventListener('click', () => {
+    openWhatsAppFromModal();
   });
 
   loadPlans();
@@ -167,7 +232,7 @@ function renderBanner(banner, status) {
 
   if (status.pendingProof) {
     banner.innerHTML = `<div class="sub-banner sub-banner-pending">
-      ⏳ Comprovativo em análise — o administrador irá activar a tua assinatura em breve.
+      ⏳ Comprovativo em análise — confirma também no WhatsApp (+244 921 923 232) se ainda não o fizeste.
     </div>`;
     return;
   }
@@ -248,7 +313,11 @@ async function reopenPendingPayment(status) {
     openPaymentModal({
       subscription: pending,
       plan,
-      payment: { ...paymentInfo, amountFormatted: plan.priceFormatted }
+      payment: {
+        ...paymentInfo,
+        amountFormatted: plan.priceFormatted,
+        paymentReference: pending.paymentReference || generatePaymentReference(pending.id)
+      }
     });
   } catch (e) {
     toast(e.message || 'Erro ao carregar dados de pagamento', 'error');
@@ -256,7 +325,8 @@ async function reopenPendingPayment(status) {
 }
 
 function openPaymentModal({ subscription, plan, payment = {} }) {
-  pendingPaymentContext = { subscription, plan, payment };
+  const paymentReference = resolvePaymentReference(subscription, payment);
+  pendingPaymentContext = { subscription, plan, payment, paymentReference };
 
   const phone = MULTICAIXA_EXPRESS_PHONE;
   const amount = payment.amountFormatted || plan?.priceFormatted || '';
@@ -274,10 +344,17 @@ function openPaymentModal({ subscription, plan, payment = {} }) {
     `Destinatário: ${recipient}`,
     `Número Express: ${phone}`,
     amount ? `Valor exacto: ${amount}` : 'Valor: conforme o plano escolhido.',
+    paymentReference ? `Referência: ${paymentReference} (indica na transferência).` : null,
     'Confirma a transferência e guarda o comprovativo.',
-    'Envia o comprovativo nesta plataforma.'
-  ];
+    'Envia o comprovativo abaixo — o WhatsApp abrirá automaticamente para confirmar.'
+  ].filter(Boolean);
   stepsEl.innerHTML = steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('');
+
+  const whatsappDisplay = document.getElementById('payment-whatsapp-display');
+  if (whatsappDisplay) {
+    const local = WHATSAPP_PHONE.startsWith('244') ? WHATSAPP_PHONE.slice(3) : WHATSAPP_PHONE;
+    whatsappDisplay.textContent = `+244 ${local.slice(0, 3)} ${local.slice(3, 6)} ${local.slice(6)}`;
+  }
 
   const phoneEl = document.getElementById('payment-phone');
   if (phoneEl) {
@@ -285,6 +362,8 @@ function openPaymentModal({ subscription, plan, payment = {} }) {
     phoneEl.dataset.copyValue = phone;
   }
   document.getElementById('payment-amount').textContent = amount;
+  const referenceInput = document.getElementById('proof-reference');
+  if (referenceInput) referenceInput.value = paymentReference;
   document.getElementById('payment-note').textContent = payment.note || '';
 
   const proofForm = document.getElementById('proof-form');
@@ -293,12 +372,24 @@ function openPaymentModal({ subscription, plan, payment = {} }) {
     proofSection.style.display = 'none';
   } else {
     proofSection.style.display = 'block';
-    document.getElementById('proof-reference').value = '';
     document.getElementById('proof-file').value = '';
     document.getElementById('proof-form-error').textContent = '';
   }
 
   document.getElementById('payment-modal')?.classList.add('active');
+}
+
+function openWhatsAppFromModal() {
+  const user = getCurrentUser();
+  const ref = document.getElementById('proof-reference')?.value?.trim()
+    || pendingPaymentContext?.paymentReference;
+  openWhatsAppProof({
+    planName: pendingPaymentContext?.plan?.name,
+    amount: pendingPaymentContext?.payment?.amountFormatted || pendingPaymentContext?.plan?.priceFormatted,
+    reference: ref,
+    username: user?.username,
+    email: user?.email
+  });
 }
 
 function closePaymentModal() {
@@ -329,11 +420,24 @@ async function handleProofSubmit(e) {
       const formData = new FormData();
       formData.append('proof', file);
       formData.append('subscription_id', subscriptionId);
-      const ref = document.getElementById('proof-reference')?.value?.trim();
-      if (ref) formData.append('transfer_reference', ref);
+      const ref = document.getElementById('proof-reference')?.value?.trim()
+        || pendingPaymentContext?.paymentReference
+        || generatePaymentReference(subscriptionId);
+      formData.append('transfer_reference', ref);
 
       const result = await apiUpload('/subscriptions/proof', formData);
       toast(result.message || 'Comprovativo enviado!', 'success');
+
+      openWhatsAppProof({
+        planName: pendingPaymentContext?.plan?.name || result.proof?.planName,
+        amount: pendingPaymentContext?.payment?.amountFormatted
+          || pendingPaymentContext?.plan?.priceFormatted
+          || result.proof?.amountFormatted,
+        reference: ref,
+        username: getCurrentUser()?.username,
+        email: getCurrentUser()?.email
+      });
+
       pendingPaymentContext = null;
       closePaymentModal();
 
