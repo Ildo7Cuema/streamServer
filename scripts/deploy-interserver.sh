@@ -100,16 +100,32 @@ echo ">> A reconstruir imagens (backend + dashboard)..."
 docker compose -f "$COMPOSE_FILE" build backend dashboard
 
 echo ""
-echo ">> A reiniciar serviços..."
-docker compose -f "$COMPOSE_FILE" up -d --force-recreate backend dashboard nginx
+echo ">> A garantir dependências (postgres, redis, icecast)..."
+docker compose -f "$COMPOSE_FILE" up -d postgres redis icecast
 
 echo ""
-echo ">> A validar configuração Nginx..."
-docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t
+echo ">> A reiniciar backend e dashboard..."
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate backend dashboard
+
+echo ""
+echo ">> A validar configuração Nginx (antes de reiniciar)..."
+docker compose -f "$COMPOSE_FILE" run --rm --no-deps nginx nginx -t
+
+echo ""
+echo ">> A reiniciar Nginx..."
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate nginx
 
 echo ""
 echo ">> A aplicar migrações da base de dados..."
 docker compose -f "$COMPOSE_FILE" exec -T backend npm run migrate || echo "AVISO: migração falhou — verifica manualmente com 'docker compose -f $COMPOSE_FILE exec backend npm run migrate'."
+
+echo ""
+echo ">> A verificar Nginx activo..."
+if ! docker compose -f "$COMPOSE_FILE" ps nginx | grep -q 'Up'; then
+  echo "❌ Container Nginx não está activo." >&2
+  docker compose -f "$COMPOSE_FILE" logs --tail=30 nginx >&2 || true
+  exit 1
+fi
 
 echo ""
 echo ">> A verificar saúde do backend (até 60s)..."
