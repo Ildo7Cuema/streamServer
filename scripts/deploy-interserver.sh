@@ -6,9 +6,9 @@
 #
 # Em vez de correr git pull / docker compose build / up manualmente (e correr
 # o risco de um passo falhar em silêncio, como já aconteceu), este script:
-#   1) confirma que não há alterações locais não commitadas que bloqueiem o pull
-#   2) faz pull e mostra exactamente o que mudou
-#   3) reconstrói e reinicia só os serviços que a stack Docker gere
+#   1) sincroniza o código com origin/main (pull manual ou reset em CI)
+#   2) reconstrói e reinicia backend, dashboard e nginx
+#   3) aplica migrações
 #   4) espera pelo backend e confirma /api/health antes de dizer "sucesso"
 #
 # Corre a partir da raiz do projecto (ex.: /opt/StreamServer).
@@ -17,6 +17,10 @@ set -euo pipefail
 
 COMPOSE_FILE="docker-compose.interserver.yml"
 HEALTH_URL="http://localhost/api/health"
+
+is_ci() {
+  [ "${CI:-}" = "true" ] || [ "${GITHUB_ACTIONS:-}" = "true" ]
+}
 
 echo "=============================================="
 echo " StreamServer — deploy (InterServer)"
@@ -29,41 +33,45 @@ fi
 
 echo ""
 echo ">> A verificar estado do git..."
-if ! git diff --quiet -- . ':!*.bak' 2>/dev/null; then
-  echo ""
-  echo "AVISO: há ficheiros com alterações locais não commitadas:"
-  git status --short
-  echo ""
-  echo "Se estes ficheiros também mudaram no repositório remoto, o 'git pull'"
-  echo "vai abortar sem tocar em nada (comportamento seguro do git, mas é fácil"
-  echo "não reparar). Para ficheiros de configuração desta VPS que edita-te à"
-  echo "mão de propósito (ex.: docker-compose.interserver.yml, nginx, icecast xml),"
-  echo "considera 'git update-index --skip-worktree <ficheiro>' uma única vez,"
-  echo "para o git deixar de tentar sobrepor-se a eles."
-  echo ""
-  if [ -t 0 ]; then
-    read -p "Continuar mesmo assim com 'git pull'? [y/N] " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-      echo "Deploy cancelado. Resolve as alterações locais e volta a correr o script."
-      exit 1
-    fi
-  else
-    echo "A correr sem terminal interativo (ex.: GitHub Actions) — a continuar."
-    echo "O próprio 'git pull' a seguir aborta em segurança se houver risco real de perder alterações."
-  fi
-fi
-
 BEFORE_COMMIT=$(git rev-parse --short HEAD)
 echo ">> Commit actual: $BEFORE_COMMIT"
 
-echo ""
-echo ">> git pull..."
-if ! git pull; then
+if is_ci; then
   echo ""
-  echo "Erro: 'git pull' falhou (provavelmente conflito com ficheiros locais)." >&2
-  echo "Nada foi reconstruído. Resolve o conflito manualmente e volta a correr." >&2
-  exit 1
+  echo ">> Modo automático (CI): sincronizar com origin/main..."
+  if ! git diff --quiet -- . ':!*.bak' 2>/dev/null; then
+    echo "AVISO: alterações locais na VPS serão descartadas para igualar o GitHub:"
+    git status --short || true
+  fi
+  git fetch origin main
+  git reset --hard origin/main
+else
+  if ! git diff --quiet -- . ':!*.bak' 2>/dev/null; then
+    echo ""
+    echo "AVISO: há ficheiros com alterações locais não commitadas:"
+    git status --short
+    echo ""
+    echo "Se estes ficheiros também mudaram no repositório remoto, o 'git pull'"
+    echo "vai abortar. Para configs editadas à mão na VPS, usa:"
+    echo "  git update-index --skip-worktree <ficheiro>"
+    echo ""
+    read -p "Continuar mesmo assim com 'git pull'? [y/N] " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "Deploy cancelado."
+      exit 1
+    fi
+  fi
+
+  echo ""
+  echo ">> git pull..."
+  if ! git pull origin main; then
+    echo ""
+    echo "Erro: 'git pull' falhou (provavelmente conflito com ficheiros locais)." >&2
+    echo "Na VPS podes forçar sync com:" >&2
+    echo "  git fetch origin main && git reset --hard origin/main" >&2
+    exit 1
+  fi
 fi
 
 AFTER_COMMIT=$(git rev-parse --short HEAD)
@@ -71,16 +79,20 @@ if [ "$BEFORE_COMMIT" = "$AFTER_COMMIT" ]; then
   echo ">> Já estava actualizado ($AFTER_COMMIT) — sem novos commits."
 else
   echo ">> Actualizado de $BEFORE_COMMIT para $AFTER_COMMIT:"
-  git log --oneline "$BEFORE_COMMIT..$AFTER_COMMIT"
+  git log --oneline "$BEFORE_COMMIT..$AFTER_COMMIT" || true
 fi
 
 echo ""
 echo ">> A reconstruir imagens (backend + dashboard)..."
-docker compose -f "$COMPOSE_FILE" build backend dashboard
+docker compose -f "$COMPOSE_FILE" build --pull backend dashboard
 
 echo ""
 echo ">> A reiniciar serviços..."
-docker compose -f "$COMPOSE_FILE" up -d backend dashboard nginx
+docker compose -f "$COMPOSE_FILE" up -d --force-recreate backend dashboard nginx
+
+echo ""
+echo ">> A validar configuração Nginx..."
+docker compose -f "$COMPOSE_FILE" exec -T nginx nginx -t
 
 echo ""
 echo ">> A aplicar migrações da base de dados..."
